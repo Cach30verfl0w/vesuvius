@@ -1,7 +1,9 @@
 pub mod error;
 pub mod device;
+pub mod render;
 
 use std::ffi::CStr;
+use std::rc::Rc;
 use ash::{Entry, Instance, vk};
 use ash::vk::{MemoryHeapFlags, PhysicalDevice};
 use itertools::Itertools;
@@ -12,10 +14,14 @@ use crate::game::error::EngineError;
 
 pub type Result<T> = std::result::Result<T, EngineError>;
 
-pub(crate) struct Game {
+struct GameInner {
     entry: Entry,
-    instance: Instance
+    instance: Instance,
+    device: WrappedDevice
 }
+
+#[derive(Clone)]
+pub(crate) struct Game(Rc<GameInner>);
 
 impl Game {
 
@@ -43,16 +49,19 @@ impl Game {
 
         // Create instance and return value
         let instance = unsafe { entry.create_instance(&instance_create_info, None) }?;
-        Ok(Self {
+
+        // Get best device
+        Ok(Self(Rc::new(GameInner {
             entry,
+            device: WrappedDevice::new(instance.clone(), unsafe { instance.enumerate_physical_devices() }?.into_iter()
+                .sorted_by(|a, b| local_heap_size_of(&instance, a).cmp(&local_heap_size_of(&instance, b)))
+                .next().unwrap())?,
             instance
-        })
+        })))
     }
 
-    pub fn request_best_device(&self) -> Result<WrappedDevice> {
-        WrappedDevice::new(&self.instance, unsafe { self.instance.enumerate_physical_devices() }?.into_iter()
-            .sorted_by(|a, b| local_heap_size_of(&self.instance, a).cmp(&local_heap_size_of(&self.instance, b)))
-            .next().unwrap())
+    pub fn device(&self) -> &WrappedDevice {
+        &self.0.device
     }
 
 }

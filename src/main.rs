@@ -5,6 +5,7 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use crate::game::Game;
+use crate::game::render::GameRenderer;
 
 fn main() {
     simple_logger::init().unwrap();
@@ -17,12 +18,14 @@ fn main() {
     // Game Init
     info!("Initializing Vesuvius");
     let game = Game::new(&window).unwrap();
-    let device = game.request_best_device().unwrap();
-    info!("Successfully requested device '{}'", device);
+    info!("Successfully requested device '{}'", game.device());
+
+    let mut renderer = GameRenderer::new(game.clone(), &window).unwrap();
 
     // Game Loop
     info!("Init game loop, display window");
     window_event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::Wait;
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -31,7 +34,9 @@ fn main() {
                 *control_flow = ControlFlow::Exit;
             },
             Event::MainEventsCleared => {
-                // Render
+                renderer.begin().unwrap();
+                renderer.clear_color(0.0, 0.0, 0.0, 1.0);
+                renderer.end().unwrap();
             }
             _ => {}
         }

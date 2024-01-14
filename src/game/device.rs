@@ -6,20 +6,20 @@ use ash::vk::PhysicalDevice;
 use crate::game::Result;
 
 #[derive(Clone)]
-pub struct WrappedDevice<'a> {
-    instance: &'a Instance,
+pub struct WrappedDevice {
+    instance: Instance,
     physical_device: PhysicalDevice,
-    virtual_device: Device
+    pub(crate) virtual_device: Device
 }
 
-impl Display for WrappedDevice<'_> {
+impl Display for WrappedDevice {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         let device_name = unsafe { self.instance.get_physical_device_properties(self.physical_device) }.device_name;
         write!(formatter, "{}", unsafe { CStr::from_ptr(device_name.as_ptr()) }.to_str().unwrap())
     }
 }
 
-impl Drop for WrappedDevice<'_> {
+impl Drop for WrappedDevice {
     fn drop(&mut self) {
         unsafe {
             self.virtual_device.destroy_device(None);
@@ -27,9 +27,9 @@ impl Drop for WrappedDevice<'_> {
     }
 }
 
-impl<'a> WrappedDevice<'a> {
+impl WrappedDevice {
 
-    pub fn new(instance: &'a Instance, physical_device: PhysicalDevice) -> Result<WrappedDevice> {
+    pub fn new(instance: Instance, physical_device: PhysicalDevice) -> Result<WrappedDevice> {
         let queue_create_info = vk::DeviceQueueCreateInfo::default()
             .queue_family_index(0)
             .queue_priorities(slice::from_ref(&1.0));

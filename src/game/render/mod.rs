@@ -24,6 +24,13 @@ impl Drop for GameRenderer {
     fn drop(&mut self) {
         let device = &self.game.0.device;
         unsafe {
+            device.virtual_device.destroy_semaphore(self.submit_semaphore, None);
+            device.virtual_device.destroy_semaphore(self.present_semaphore, None);
+            for image_view in &self.image_views {
+                device.virtual_device.destroy_image_view(*image_view, None);
+            }
+
+            self.swapchain_loader.destroy_swapchain(self.swapchain, None);
             device.virtual_device.free_command_buffers(self.command_pool, slice::from_ref(&self.command_buffer));
             device.virtual_device.destroy_command_pool(self.command_pool, None);
         }

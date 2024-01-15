@@ -19,14 +19,6 @@ impl Display for WrappedDevice {
     }
 }
 
-impl Drop for WrappedDevice {
-    fn drop(&mut self) {
-        unsafe {
-            self.virtual_device.destroy_device(None);
-        }
-    }
-}
-
 impl WrappedDevice {
 
     pub fn new(instance: Instance, physical_device: PhysicalDevice) -> Result<WrappedDevice> {

@@ -21,6 +21,14 @@ struct GameInner {
     pub(crate) window: Window
 }
 
+impl Drop for GameInner {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.virtual_device.destroy_device(None);
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct Game(Rc<GameInner>);
 

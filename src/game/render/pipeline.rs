@@ -139,7 +139,6 @@ impl RenderPipeline {
         let stages = self.shader_modules.iter()
             .map(|module| module.into())
             .collect::<Vec<_>>();
-        // TODO: Missing input assembly state
         let graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo::default()
             .push_next(&mut pipeline_rendering_create_info)
             .vertex_input_state(&vertex_input_state_create_info)

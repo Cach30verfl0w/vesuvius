@@ -12,7 +12,7 @@ use crate::game::Result;
 /// functionality to simply create and manage shaders etc.
 pub(crate) struct GameRenderer {
     game: Game,
-    watcher: Box<dyn Watcher>,
+    _watcher: Box<dyn Watcher>,
     swapchain_loader: Swapchain,
     swapchain: vk::SwapchainKHR,
     image_views: Vec<vk::ImageView>,
@@ -111,7 +111,7 @@ impl<'a> GameRenderer {
             present_semaphore: unsafe { virtual_device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?,
             queue: unsafe { virtual_device.get_device_queue(0, 0) },
             game,
-            watcher: Box::new(watcher),
+            _watcher: Box::new(watcher),
             swapchain_loader,
             swapchain,
             images,

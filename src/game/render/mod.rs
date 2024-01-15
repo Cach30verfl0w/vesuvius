@@ -1,7 +1,7 @@
 pub mod pipeline;
 
 use std::path::Path;
-use std::slice;
+use std::{fs, slice};
 use ash::extensions::khr::Swapchain;
 use ash::vk;
 use log::info;
@@ -133,14 +133,22 @@ impl<'a> GameRenderer {
             command_pool,
             command_buffer,
             current_image_index: 0,
-            pipelines: vec![
-                RenderPipeline::from_file("assets/pipelines/triangle.json")?
-            ]
+            pipelines: Vec::new()
         })
     }
 
-    pub fn init_pipelines(&mut self) {
-        self.pipelines.get_mut(0).unwrap().compile(&self.game).unwrap();
+    pub fn init_pipelines(&mut self) -> Result<()> {
+        for path_result in fs::read_dir("assets/pipelines")? {
+            let path = path_result?.path();
+            if !path.is_file() || !path.to_str().unwrap().ends_with(".json") {
+                continue;
+            }
+
+            let mut pipeline = RenderPipeline::from_file(path)?;
+            pipeline.compile(&self.game)?;
+            self.pipelines.push(pipeline);
+        }
+        Ok(())
     }
 
     pub fn begin(&mut self) -> Result<()> {
@@ -179,13 +187,18 @@ impl<'a> GameRenderer {
         Ok(())
     }
 
-    pub fn draw(&self, name: &str) {
+    pub fn apply_pipeline(&self, name: &str) {
         let pipeline = self.pipelines.iter().find(|pipeline| pipeline.name == name).unwrap();
         unsafe {
-            let device = self.game.device();
-            device.virtual_device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline
-                .vulkan_pipeline.unwrap());
-            device.virtual_device.cmd_draw(self.command_buffer, 3, 1, 0, 0);
+            self.game.device().virtual_device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::GRAPHICS,
+                                                                pipeline.vulkan_pipeline.unwrap());
+        }
+    }
+
+    pub fn draw(&self) {
+        unsafe {
+            // Vertex Count
+            self.game.device().virtual_device.cmd_draw(self.command_buffer, 3, 1, 0, 0);
         }
     }
 

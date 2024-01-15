@@ -3,9 +3,11 @@ use std::{fs, slice};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use ash::vk;
+use ash::vk::VertexInputRate;
 use log::info;
 use serde::{Deserialize, Serialize};
 use shaderc::{CompileOptions, Compiler};
+use spirv_reflect::types::ReflectFormat;
 use crate::game::error::EngineError;
 use crate::game::{Game, Result};
 
@@ -60,7 +62,8 @@ impl RenderPipeline {
             shader_modules.push(ShaderModule {
                 shader_source_path: shader_path,
                 vulkan_shader_module: None,
-                kind: shader_configuration.kind
+                kind: shader_configuration.kind,
+                shader_ir_code: Vec::new()
             })
         }
         info!("Internally created '{}' render pipeline with {} shaders",
@@ -126,7 +129,13 @@ impl RenderPipeline {
             .create_pipeline_layout(&layout_create_info, None) }?;
 
         // Configure pipeline input
-        let vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo::default();
+        let vertex_shader = self.shader_modules.iter()
+            .find(|module| module.kind == ShaderKind::Vertex).unwrap();
+        let (input_attrs, binding_description) = vertex_shader.reflect_input_attributes();
+
+        let vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo::default()
+            .vertex_attribute_descriptions(input_attrs.as_slice())
+            .vertex_binding_descriptions(slice::from_ref(&binding_description));
 
         // Create pipeline with recompiled shader modules
         let mut pipeline_rendering_create_info = vk::PipelineRenderingCreateInfo::default()
@@ -183,6 +192,9 @@ pub(crate) struct ShaderModule {
     /// This field contains the path to the shader source file in the assets folder
     shader_source_path: PathBuf,
 
+    /// The SPIR-V IR code of the compiled shader
+    shader_ir_code: Vec<u8>,
+
     /// This field contains the handle of the compiled shader module
     pub(crate) vulkan_shader_module: Option<vk::ShaderModule>,
 
@@ -210,6 +222,7 @@ impl ShaderModule {
         let options = CompileOptions::new().ok_or(EngineError::CompilerCreation)?;
         let result = compiler.compile_into_spirv(&file_content, self.kind.into(), file_name,
                                                  "main", Some(&options))?;
+        self.shader_ir_code = result.as_binary_u8().to_vec();
 
         // Create shader
         let device = game.device();
@@ -224,6 +237,28 @@ impl ShaderModule {
         }?;
         self.vulkan_shader_module = Some(shader);
         Ok(())
+    }
+
+    pub(crate) fn reflect_input_attributes(&self) -> (Vec<vk::VertexInputAttributeDescription>,
+                                                      vk::VertexInputBindingDescription) {
+        let reflected_module = spirv_reflect::create_shader_module(self.shader_ir_code.as_slice())
+            .unwrap();
+
+        let mut input_attributes = Vec::new();
+        let mut offset = 0;
+        for input_variable in reflected_module.enumerate_input_variables(None).unwrap() {
+            input_attributes.push(vk::VertexInputAttributeDescription::default()
+                .location(input_variable.location)
+                .format(reflect_to_vulkan_format(input_variable.format))
+                .offset(offset));
+            offset += reflect_format_to_offset(input_variable.format);
+        }
+        (
+            input_attributes,
+            vk::VertexInputBindingDescription::default()
+                .stride(offset)
+                .input_rate(VertexInputRate::VERTEX)
+        )
     }
 
 }
@@ -282,4 +317,36 @@ struct ShaderConfiguration {
 struct RasterizerConfiguration {
     polygon_mode: String,
     line_width: f32
+}
+
+#[inline]
+fn reflect_to_vulkan_format(format: ReflectFormat) -> vk::Format {
+    match format {
+        ReflectFormat::Undefined => vk::Format::UNDEFINED,
+        ReflectFormat::R32_UINT => vk::Format::R32_UINT,
+        ReflectFormat::R32_SINT => vk::Format::R32_SINT,
+        ReflectFormat::R32_SFLOAT => vk::Format::R32_SFLOAT,
+        ReflectFormat::R32G32_UINT => vk::Format::R32G32_UINT,
+        ReflectFormat::R32G32_SINT => vk::Format::R32G32_UINT,
+        ReflectFormat::R32G32_SFLOAT => vk::Format::R32G32_SFLOAT,
+        ReflectFormat::R32G32B32_UINT => vk::Format::R32G32B32_UINT,
+        ReflectFormat::R32G32B32_SINT => vk::Format::R32G32B32_SINT,
+        ReflectFormat::R32G32B32_SFLOAT => vk::Format::R32G32B32_SFLOAT,
+        ReflectFormat::R32G32B32A32_UINT => vk::Format::R32G32B32A32_UINT,
+        ReflectFormat::R32G32B32A32_SINT => vk::Format::R32G32B32A32_SINT,
+        ReflectFormat::R32G32B32A32_SFLOAT => vk::Format::R32G32B32A32_SFLOAT
+    }
+}
+
+#[inline]
+fn reflect_format_to_offset(format: ReflectFormat) -> u32 {
+    match format {
+        ReflectFormat::Undefined => 0,
+        ReflectFormat::R32_UINT | ReflectFormat::R32_SINT | ReflectFormat::R32_SFLOAT => 4,
+        ReflectFormat::R32G32_UINT | ReflectFormat::R32G32_SINT | ReflectFormat::R32G32_SFLOAT => 8,
+        ReflectFormat::R32G32B32_UINT | ReflectFormat::R32G32B32_SINT => 12,
+        ReflectFormat::R32G32B32_SFLOAT => 12,
+        ReflectFormat::R32G32B32A32_UINT | ReflectFormat::R32G32B32A32_SINT => 16,
+        ReflectFormat::R32G32B32A32_SFLOAT => 16,
+    }
 }

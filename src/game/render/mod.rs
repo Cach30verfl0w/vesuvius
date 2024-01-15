@@ -3,7 +3,6 @@ use ash::extensions::khr::Swapchain;
 use ash::vk;
 use log::info;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
-use winit::window::Window;
 use crate::game::Game;
 use crate::game::Result;
 
@@ -18,8 +17,7 @@ pub(crate) struct GameRenderer {
     submit_semaphore: vk::Semaphore,
     present_semaphore: vk::Semaphore,
     queue: vk::Queue,
-    current_image_index: u32,
-    window_size: (u32, u32)
+    current_image_index: u32
 }
 
 impl Drop for GameRenderer {
@@ -32,9 +30,10 @@ impl Drop for GameRenderer {
     }
 }
 
-impl GameRenderer {
+impl<'a> GameRenderer {
 
-    pub(crate) fn new(game: Game, window: &Window) -> Result<Self> {
+    pub(crate) fn new(game: Game) -> Result<Self> {
+        let window = game.window();
         let surface = unsafe { ash_window::create_surface(&game.0.entry, &game.0.instance, window.raw_display_handle(),
                                                           window.raw_window_handle(), None)? };
 
@@ -91,8 +90,7 @@ impl GameRenderer {
             image_views,
             command_pool,
             command_buffer,
-            current_image_index: 0,
-            window_size: (window.inner_size().width, window.inner_size().height)
+            current_image_index: 0
         })
     }
 
@@ -143,12 +141,14 @@ impl GameRenderer {
                     float32: [red, green, blue, alpha]
                 }
             });
+
+        let window_size = self.game.window().inner_size();
         let rendering_info = vk::RenderingInfo::default()
             .layer_count(1)
             .render_area(vk::Rect2D {
                 offset: vk::Offset2D::default(), extent: vk::Extent2D {
-                    width: self.window_size.0,
-                    height: self.window_size.1
+                    width: window_size.width,
+                    height: window_size.height
                 }
             })
             .color_attachments(slice::from_ref(&rendering_attachment_info));

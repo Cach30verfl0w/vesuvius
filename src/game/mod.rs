@@ -17,7 +17,8 @@ pub type Result<T> = std::result::Result<T, EngineError>;
 struct GameInner {
     entry: Entry,
     instance: Instance,
-    device: WrappedDevice
+    device: WrappedDevice,
+    pub(crate) window: Window
 }
 
 #[derive(Clone)]
@@ -25,7 +26,7 @@ pub(crate) struct Game(Rc<GameInner>);
 
 impl Game {
 
-    pub(crate) fn new(window: &Window) -> Result<Self> {
+    pub(crate) fn new(window: Window) -> Result<Self> {
         let entry = unsafe { Entry::load() }?;
 
         // Generate instance create info etc.
@@ -56,12 +57,19 @@ impl Game {
             device: WrappedDevice::new(instance.clone(), unsafe { instance.enumerate_physical_devices() }?.into_iter()
                 .sorted_by(|a, b| local_heap_size_of(&instance, a).cmp(&local_heap_size_of(&instance, b)))
                 .next().unwrap())?,
-            instance
+            instance,
+            window
         })))
     }
 
+    #[inline]
     pub fn device(&self) -> &WrappedDevice {
         &self.0.device
+    }
+
+    #[inline]
+    pub fn window(&self) -> &Window {
+        &self.0.window
     }
 
 }

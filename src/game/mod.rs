@@ -14,11 +14,13 @@ use crate::game::error::EngineError;
 
 pub type Result<T> = std::result::Result<T, EngineError>;
 
+/// This struct is the internal store of the vulkan instance, the main graphics device and the game window. This is the
+/// internal holder of the data in the Game struct (which is internally an reference counter).
 struct GameInner {
     entry: Entry,
     instance: Instance,
     device: WrappedDevice,
-    pub(crate) window: Window
+    window: Window
 }
 
 impl Drop for GameInner {
@@ -34,6 +36,9 @@ pub(crate) struct Game(Rc<GameInner>);
 
 impl Game {
 
+
+    /// This function creates the vulkan part of the game instance with some data, provided by the specified window, and
+    /// returns the instance itself.
     pub(crate) fn new(window: Window) -> Result<Self> {
         let entry = unsafe { Entry::load() }?;
 

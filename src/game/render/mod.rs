@@ -1,13 +1,18 @@
+use std::path::Path;
 use std::slice;
 use ash::extensions::khr::Swapchain;
 use ash::vk;
 use log::info;
+use notify::{RecursiveMode, Watcher};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use crate::game::Game;
 use crate::game::Result;
 
+/// This is the main game renderer for this game. This wraps around the verbose Vulkan API and provides the
+/// functionality to simply create and manage shaders etc.
 pub(crate) struct GameRenderer {
     game: Game,
+    watcher: Box<dyn Watcher>,
     swapchain_loader: Swapchain,
     swapchain: vk::SwapchainKHR,
     image_views: Vec<vk::ImageView>,
@@ -39,6 +44,8 @@ impl Drop for GameRenderer {
 
 impl<'a> GameRenderer {
 
+    /// This function creates the surface, swapchain etc. by the specified game instance. It also initialises the
+    /// filesystem watcher for the assets/resources.
     pub(crate) fn new(game: Game) -> Result<Self> {
         let window = game.window();
         let surface = unsafe { ash_window::create_surface(&game.0.entry, &game.0.instance, window.raw_display_handle(),
@@ -85,12 +92,26 @@ impl<'a> GameRenderer {
             .command_buffer_count(1);
         let command_buffer = unsafe { game.0.device.virtual_device.allocate_command_buffers(&command_buffer_alloc_info) }?[0];
 
+        // Initialize filesystem resource/assets watcher
+        let mut watcher = notify::recommended_watcher(|event_result| {
+            match event_result {
+                Ok(event) => {
+                    // TODO: Implement live resource updating etc.
+                    println!("{:?}", event);
+                },
+                Err(error) => panic!("Error while operating with the resource watcher => {0}", error)
+            }
+        })?;
+        watcher.watch(Path::new("assets"), RecursiveMode::Recursive)?;
+
+        // Return game renderer to caller
         let virtual_device = &game.0.device.virtual_device;
         Ok(Self {
             submit_semaphore: unsafe { virtual_device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?,
             present_semaphore: unsafe { virtual_device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?,
             queue: unsafe { virtual_device.get_device_queue(0, 0) },
             game,
+            watcher: Box::new(watcher),
             swapchain_loader,
             swapchain,
             images,
@@ -191,7 +212,7 @@ impl<'a> GameRenderer {
         // Move command buffer into executable state
         unsafe { device.end_command_buffer(self.command_buffer) }?;
 
-        // Submit and present queue
+        // Submit and present queued commands
         let submit_info = vk::SubmitInfo::default()
             .wait_semaphores(slice::from_ref(&self.submit_semaphore))
             .wait_dst_stage_mask(slice::from_ref(&vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT))

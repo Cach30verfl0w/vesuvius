@@ -7,5 +7,8 @@ pub enum EngineError {
     Load(#[from] LoadingError),
 
     #[error("Vulkan Error => {0}")]
-    Vulkan(#[from] vk::Result)
+    Vulkan(#[from] vk::Result),
+
+    #[error("File Watcher Error => {0}")]
+    FileWatcher(#[from] notify::Error)
 }

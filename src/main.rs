@@ -37,7 +37,8 @@ fn main() {
             } if window_id == game.window().id() => {
                 *control_flow = ControlFlow::Exit;
             },
-            Event::MainEventsCleared => {
+            Event::MainEventsCleared => game.window().request_redraw(),
+            Event::RedrawRequested(_window_id) => {
                 renderer.begin().unwrap();
                 renderer.clear_color(0.0, 0.0, 0.0, 1.0);
                 renderer.end().unwrap();

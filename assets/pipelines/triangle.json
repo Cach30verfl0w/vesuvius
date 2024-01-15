@@ -1,0 +1,17 @@
+{
+  "name": "triangle",
+  "shader": [
+    {
+      "type": "vertex",
+      "file": "assets/shader/triangle.vertex.glsl"
+    },
+    {
+      "type": "fragment",
+      "file": "assets/shader/triangle.fragment.glsl"
+    }
+  ],
+  "rasterizer": {
+    "polygon_mode": "fill",
+    "line_width": 1.0
+  }
+}

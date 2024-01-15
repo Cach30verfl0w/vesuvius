@@ -1,11 +1,15 @@
+pub mod shader;
+
 use std::path::Path;
-use std::slice;
+use std::{fs, slice};
+use std::ops::Deref;
 use ash::extensions::khr::Swapchain;
 use ash::vk;
-use log::info;
+use log::{debug, info};
 use notify::{RecursiveMode, Watcher};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use crate::game::Game;
+use crate::game::render::shader::Shader;
 use crate::game::Result;
 
 /// This is the main game renderer for this game. This wraps around the verbose Vulkan API and provides the
@@ -22,13 +26,18 @@ pub(crate) struct GameRenderer {
     submit_semaphore: vk::Semaphore,
     present_semaphore: vk::Semaphore,
     queue: vk::Queue,
-    current_image_index: u32
+    current_image_index: u32,
+    shader_modules: Vec<Shader>
 }
 
 impl Drop for GameRenderer {
     fn drop(&mut self) {
         let device = &self.game.0.device;
         unsafe {
+            for shader_module in self.shader_modules.iter() {
+                device.virtual_device.destroy_shader_module(*shader_module.deref(), None);
+            }
+
             device.virtual_device.destroy_semaphore(self.submit_semaphore, None);
             device.virtual_device.destroy_semaphore(self.present_semaphore, None);
             for image_view in &self.image_views {
@@ -104,6 +113,22 @@ impl<'a> GameRenderer {
         })?;
         watcher.watch(Path::new("assets"), RecursiveMode::Recursive)?;
 
+        // Initialize shaders
+        let mut shader_modules = Vec::new();
+        for file_result in fs::read_dir("assets/shader")? {
+            let path = file_result?.path();
+            if !path.is_file() {
+                continue;
+            }
+
+            debug!("Creating shader '{}' from '{}'", path.file_name().unwrap().to_str().unwrap(), path.to_str().unwrap());
+            let mut shader = Shader::from_file(path);
+            shader.update(game.device())?;
+            shader_modules.push(shader);
+            debug!("Loaded shader internally as vulkan shader module");
+        }
+        info!("Successfully loaded {} shader modules into memory", shader_modules.len());
+
         // Return game renderer to caller
         let virtual_device = &game.0.device.virtual_device;
         Ok(Self {
@@ -118,7 +143,8 @@ impl<'a> GameRenderer {
             image_views,
             command_pool,
             command_buffer,
-            current_image_index: 0
+            current_image_index: 0,
+            shader_modules
         })
     }
 

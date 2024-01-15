@@ -25,6 +25,7 @@ fn main() {
     let game = Game::new(window).unwrap();
     info!("Successfully requested device '{}'", game.device());
     let mut renderer = GameRenderer::new(game.clone()).unwrap();
+    renderer.init_pipelines();
 
     // Game Loop
     info!("Init game loop and display window");
@@ -41,6 +42,7 @@ fn main() {
             Event::RedrawRequested(_window_id) => {
                 renderer.begin().unwrap();
                 renderer.clear_color(0.0, 0.0, 0.0, 1.0);
+                renderer.draw("triangle");
                 renderer.end().unwrap();
             }
             _ => {}

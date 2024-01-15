@@ -2,11 +2,11 @@
   "name": "triangle",
   "shader": [
     {
-      "type": "vertex",
+      "kind": "vertex",
       "file": "assets/shader/triangle.vertex.glsl"
     },
     {
-      "type": "fragment",
+      "kind": "fragment",
       "file": "assets/shader/triangle.fragment.glsl"
     }
   ],

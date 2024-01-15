@@ -8,6 +8,7 @@ use log::info;
 use notify::{RecursiveMode, Watcher};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use crate::game::Game;
+use crate::game::render::pipeline::RenderPipeline;
 
 use crate::game::Result;
 
@@ -25,13 +26,23 @@ pub(crate) struct GameRenderer {
     submit_semaphore: vk::Semaphore,
     present_semaphore: vk::Semaphore,
     queue: vk::Queue,
-    current_image_index: u32
+    current_image_index: u32,
+    pipelines: Vec<RenderPipeline>
 }
 
 impl Drop for GameRenderer {
     fn drop(&mut self) {
         let device = &self.game.0.device;
         unsafe {
+            for pipeline in self.pipelines.iter() {
+                for shader in pipeline.shader_modules.iter() {
+                    device.virtual_device.destroy_shader_module(shader.vulkan_shader_module.unwrap(), None);
+                }
+
+                device.virtual_device.destroy_pipeline(pipeline.vulkan_pipeline.unwrap(), None);
+                device.virtual_device.destroy_pipeline_layout(pipeline.vulkan_pipeline_layout.unwrap(), None);
+            }
+
             device.virtual_device.destroy_semaphore(self.submit_semaphore, None);
             device.virtual_device.destroy_semaphore(self.present_semaphore, None);
             for image_view in &self.image_views {
@@ -121,8 +132,15 @@ impl<'a> GameRenderer {
             image_views,
             command_pool,
             command_buffer,
-            current_image_index: 0
+            current_image_index: 0,
+            pipelines: vec![
+                RenderPipeline::from_file("assets/pipelines/triangle.json")?
+            ]
         })
+    }
+
+    pub fn init_pipelines(&mut self) {
+        self.pipelines.get_mut(0).unwrap().compile(&self.game).unwrap();
     }
 
     pub fn begin(&mut self) -> Result<()> {
@@ -161,6 +179,16 @@ impl<'a> GameRenderer {
         Ok(())
     }
 
+    pub fn draw(&self, name: &str) {
+        let pipeline = self.pipelines.iter().find(|pipeline| pipeline.name == name).unwrap();
+        unsafe {
+            let device = self.game.device();
+            device.virtual_device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline
+                .vulkan_pipeline.unwrap());
+            device.virtual_device.cmd_draw(self.command_buffer, 3, 1, 0, 0);
+        }
+    }
+
     pub fn clear_color(&self, red: f32, green: f32, blue: f32, alpha: f32) {
         let rendering_attachment_info = vk::RenderingAttachmentInfo::default()
             .image_view(self.image_views[self.current_image_index as usize])
@@ -184,14 +212,15 @@ impl<'a> GameRenderer {
             })
             .color_attachments(slice::from_ref(&rendering_attachment_info));
         unsafe {
-            self.game.0.device.virtual_device.cmd_begin_rendering(self.command_buffer, &rendering_info);
-            self.game.0.device.virtual_device.cmd_end_rendering(self.command_buffer);
+            let device = self.game.device();
+            device.virtual_device.cmd_begin_rendering(self.command_buffer, &rendering_info);
         }
 
     }
 
     pub fn end(&self) -> Result<()> {
         let device = &self.game.0.device.virtual_device;
+        unsafe { device.cmd_end_rendering(self.command_buffer) };
 
         let image_memory_barrier = vk::ImageMemoryBarrier::default()
             .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)

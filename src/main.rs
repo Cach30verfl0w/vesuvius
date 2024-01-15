@@ -44,7 +44,7 @@ fn main() {
                 renderer.clear_color(0.0, 0.0, 0.0, 1.0);
 
                 renderer.apply_pipeline("triangle");
-                renderer.draw();
+                renderer.draw(3);
 
                 renderer.end().unwrap();
             }

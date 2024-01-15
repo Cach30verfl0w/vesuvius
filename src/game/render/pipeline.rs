@@ -3,7 +3,6 @@ use std::{fs, slice};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use ash::vk;
-use ash::vk::VertexInputRate;
 use log::info;
 use serde::{Deserialize, Serialize};
 use shaderc::{CompileOptions, Compiler};
@@ -81,7 +80,7 @@ impl RenderPipeline {
 
     pub(crate) fn compile(&mut self, game: &Game) -> Result<()> {
         let window_size = game.window().inner_size();
-        let device = game.device();
+        let device = game.device().virtual_device();
 
         // Recompile all shader
         for shader_module in self.shader_modules.iter_mut() {
@@ -125,17 +124,17 @@ impl RenderPipeline {
 
         // Create pipeline layout
         let layout_create_info = vk::PipelineLayoutCreateInfo::default();
-        let layout = unsafe { game.device().virtual_device
+        let layout = unsafe { game.device().virtual_device()
             .create_pipeline_layout(&layout_create_info, None) }?;
 
         // Configure pipeline input
         let vertex_shader = self.shader_modules.iter()
             .find(|module| module.kind == ShaderKind::Vertex).unwrap();
-        let (input_attrs, binding_description) = vertex_shader.reflect_input_attributes();
+        let (input_attrs, binding_desc) = vertex_shader.reflect_input_attributes();
 
         let vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo::default()
             .vertex_attribute_descriptions(input_attrs.as_slice())
-            .vertex_binding_descriptions(slice::from_ref(&binding_description));
+            .vertex_binding_descriptions(slice::from_ref(&binding_desc));
 
         // Create pipeline with recompiled shader modules
         let mut pipeline_rendering_create_info = vk::PipelineRenderingCreateInfo::default()
@@ -163,22 +162,23 @@ impl RenderPipeline {
 
         // Destroy old handles in memory
         if let Some(old_pipeline) = self.vulkan_pipeline {
-            unsafe { device.virtual_device.destroy_pipeline(old_pipeline, None) };
+            unsafe { device.destroy_pipeline(old_pipeline, None) };
         }
 
         if let Some(old_layout_handle) = self.vulkan_pipeline_layout {
-            unsafe { device.virtual_device.destroy_pipeline_layout(old_layout_handle, None) };
+            unsafe { device.destroy_pipeline_layout(old_layout_handle, None) };
         }
 
         // Replace old handles with new handles
         self.vulkan_pipeline_layout = Some(layout);
         self.vulkan_pipeline = Some(unsafe {
-            device.virtual_device.create_graphics_pipelines(
+            device.create_graphics_pipelines(
                 vk::PipelineCache::null(),
                 slice::from_ref(&graphics_pipeline_create_info),
                 None
             )
         }.unwrap()[0]);
+
         Ok(())
     }
 
@@ -225,16 +225,14 @@ impl ShaderModule {
         self.shader_ir_code = result.as_binary_u8().to_vec();
 
         // Create shader
-        let device = game.device();
+        let device = game.device().virtual_device();
         if let Some(old_shader_module) = self.vulkan_shader_module {
-            unsafe { device.virtual_device.destroy_shader_module(old_shader_module, None) };
+            unsafe { device.destroy_shader_module(old_shader_module, None) };
         }
 
         let shader_module_create_info = vk::ShaderModuleCreateInfo::default()
             .code(result.as_binary());
-        let shader = unsafe {
-            device.virtual_device.create_shader_module(&shader_module_create_info, None)
-        }?;
+        let shader = unsafe { device.create_shader_module(&shader_module_create_info, None) }?;
         self.vulkan_shader_module = Some(shader);
         Ok(())
     }
@@ -257,7 +255,7 @@ impl ShaderModule {
             input_attributes,
             vk::VertexInputBindingDescription::default()
                 .stride(offset)
-                .input_rate(VertexInputRate::VERTEX)
+                .input_rate(vk::VertexInputRate::VERTEX)
         )
     }
 
@@ -349,4 +347,17 @@ fn reflect_format_to_offset(format: ReflectFormat) -> u32 {
         ReflectFormat::R32G32B32A32_UINT | ReflectFormat::R32G32B32A32_SINT => 16,
         ReflectFormat::R32G32B32A32_SFLOAT => 16,
     }
+}
+
+fn memory_type_index(game: &Game, type_filter: u32, props: vk::MemoryPropertyFlags) -> u32 {
+    let mem_props = unsafe {
+        game.0.instance.get_physical_device_memory_properties(*game.device().physical_device())
+    };
+    for i in 0..mem_props.memory_type_count as usize {
+        if (type_filter & (1 << i)) != 1 && !(mem_props.memory_types[i].property_flags & props)
+            .is_empty() {
+            return i as u32;
+        }
+    }
+    panic!("No support ig... ._.")
 }

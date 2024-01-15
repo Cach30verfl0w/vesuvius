@@ -32,26 +32,26 @@ pub(crate) struct GameRenderer {
 
 impl Drop for GameRenderer {
     fn drop(&mut self) {
-        let device = &self.game.0.device;
+        let device = &self.game.device().virtual_device();
         unsafe {
             for pipeline in self.pipelines.iter() {
                 for shader in pipeline.shader_modules.iter() {
-                    device.virtual_device.destroy_shader_module(shader.vulkan_shader_module.unwrap(), None);
+                    device.destroy_shader_module(shader.vulkan_shader_module.unwrap(), None);
                 }
 
-                device.virtual_device.destroy_pipeline(pipeline.vulkan_pipeline.unwrap(), None);
-                device.virtual_device.destroy_pipeline_layout(pipeline.vulkan_pipeline_layout.unwrap(), None);
+                device.destroy_pipeline(pipeline.vulkan_pipeline.unwrap(), None);
+                device.destroy_pipeline_layout(pipeline.vulkan_pipeline_layout.unwrap(), None);
             }
 
-            device.virtual_device.destroy_semaphore(self.submit_semaphore, None);
-            device.virtual_device.destroy_semaphore(self.present_semaphore, None);
+            device.destroy_semaphore(self.submit_semaphore, None);
+            device.destroy_semaphore(self.present_semaphore, None);
             for image_view in &self.image_views {
-                device.virtual_device.destroy_image_view(*image_view, None);
+                device.destroy_image_view(*image_view, None);
             }
 
             self.swapchain_loader.destroy_swapchain(self.swapchain, None);
-            device.virtual_device.free_command_buffers(self.command_pool, slice::from_ref(&self.command_buffer));
-            device.virtual_device.destroy_command_pool(self.command_pool, None);
+            device.free_command_buffers(self.command_pool, slice::from_ref(&self.command_buffer));
+            device.destroy_command_pool(self.command_pool, None);
         }
     }
 }
@@ -64,9 +64,10 @@ impl<'a> GameRenderer {
         let window = game.window();
         let surface = unsafe { ash_window::create_surface(&game.0.entry, &game.0.instance, window.raw_display_handle(),
                                                           window.raw_window_handle(), None)? };
+        let device = game.device().virtual_device();
 
         // Create swapchain
-        let swapchain_loader = Swapchain::new(&game.0.instance, &game.0.device.virtual_device);
+        let swapchain_loader = Swapchain::new(&game.0.instance, &device);
         let swapchain_create_info = vk::SwapchainCreateInfoKHR::default()
             .surface(surface)
             .min_image_count(2)
@@ -92,19 +93,19 @@ impl<'a> GameRenderer {
                 .components(vk::ComponentMapping::default())
                 .subresource_range(vk::ImageSubresourceRange::default().aspect_mask(vk::ImageAspectFlags::COLOR)
                     .layer_count(1).level_count(1));
-            unsafe { game.0.device.virtual_device.create_image_view(&image_view_create_info, None) }.unwrap()
+            unsafe { device.create_image_view(&image_view_create_info, None) }.unwrap()
         }).collect::<Vec<_>>();
 
         // Command Pool and Command Buffer
         let command_pool_create_info = vk::CommandPoolCreateInfo::default()
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER) // Reset at begin
             .queue_family_index(0);
-        let command_pool = unsafe { game.0.device.virtual_device.create_command_pool(&command_pool_create_info, None) }?;
+        let command_pool = unsafe { device.create_command_pool(&command_pool_create_info, None) }?;
 
         let command_buffer_alloc_info = vk::CommandBufferAllocateInfo::default()
             .command_pool(command_pool)
             .command_buffer_count(1);
-        let command_buffer = unsafe { game.0.device.virtual_device.allocate_command_buffers(&command_buffer_alloc_info) }?[0];
+        let command_buffer = unsafe { device.allocate_command_buffers(&command_buffer_alloc_info) }?[0];
 
         // Initialize filesystem resource/assets watcher
         let mut watcher = notify::recommended_watcher(|event_result| {
@@ -119,11 +120,10 @@ impl<'a> GameRenderer {
         watcher.watch(Path::new("assets"), RecursiveMode::Recursive)?;
 
         // Return game renderer to caller
-        let virtual_device = &game.0.device.virtual_device;
         Ok(Self {
-            submit_semaphore: unsafe { virtual_device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?,
-            present_semaphore: unsafe { virtual_device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?,
-            queue: unsafe { virtual_device.get_device_queue(0, 0) },
+            submit_semaphore: unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?,
+            present_semaphore: unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?,
+            queue: unsafe { device.get_device_queue(0, 0) },
             game,
             _watcher: Box::new(watcher),
             swapchain_loader,
@@ -161,7 +161,7 @@ impl<'a> GameRenderer {
             )
         }?.0;
 
-        let device = &self.game.0.device.virtual_device;
+        let device = self.game.device().virtual_device();
         unsafe { device.reset_command_pool(self.command_pool, vk::CommandPoolResetFlags::RELEASE_RESOURCES) }?;
         unsafe { device.reset_command_buffer(self.command_buffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES) }?;
         unsafe { device.begin_command_buffer(self.command_buffer, &vk::CommandBufferBeginInfo::default()) }?;
@@ -190,15 +190,15 @@ impl<'a> GameRenderer {
     pub fn apply_pipeline(&self, name: &str) {
         let pipeline = self.pipelines.iter().find(|pipeline| pipeline.name == name).unwrap();
         unsafe {
-            self.game.device().virtual_device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::GRAPHICS,
+            self.game.device().virtual_device().cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::GRAPHICS,
                                                                 pipeline.vulkan_pipeline.unwrap());
         }
     }
 
-    pub fn draw(&self) {
+    pub fn draw(&self, vertices: u32) {
         unsafe {
-            // Vertex Count
-            self.game.device().virtual_device.cmd_draw(self.command_buffer, 3, 1, 0, 0);
+            // 1. parameter: Vertex Count
+            self.game.device().virtual_device().cmd_draw(self.command_buffer, vertices, 1, 0, 0);
         }
     }
 
@@ -226,13 +226,13 @@ impl<'a> GameRenderer {
             .color_attachments(slice::from_ref(&rendering_attachment_info));
         unsafe {
             let device = self.game.device();
-            device.virtual_device.cmd_begin_rendering(self.command_buffer, &rendering_info);
+            device.virtual_device().cmd_begin_rendering(self.command_buffer, &rendering_info);
         }
 
     }
 
     pub fn end(&self) -> Result<()> {
-        let device = &self.game.0.device.virtual_device;
+        let device = &self.game.0.device.virtual_device();
         unsafe { device.cmd_end_rendering(self.command_buffer) };
 
         let image_memory_barrier = vk::ImageMemoryBarrier::default()

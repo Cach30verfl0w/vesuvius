@@ -1,6 +1,7 @@
 pub mod error;
 pub mod device;
 pub mod render;
+pub mod buffer;
 
 use std::ffi::CStr;
 use std::rc::Rc;
@@ -26,7 +27,7 @@ struct GameInner {
 impl Drop for GameInner {
     fn drop(&mut self) {
         unsafe {
-            self.device.virtual_device.destroy_device(None);
+            self.device.virtual_device().destroy_device(None);
         }
     }
 }

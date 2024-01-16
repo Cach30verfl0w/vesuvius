@@ -7,6 +7,7 @@ use ash::vk;
 use log::info;
 use notify::{RecursiveMode, Watcher};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
+use crate::game::device::WrappedBuffer;
 use crate::game::Game;
 use crate::game::render::pipeline::RenderPipeline;
 
@@ -192,6 +193,17 @@ impl<'a> GameRenderer {
         unsafe {
             self.game.device().virtual_device().cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::GRAPHICS,
                                                                 pipeline.vulkan_pipeline.unwrap());
+        }
+    }
+
+    pub fn bind_vertex_buffer(&self, buffer: &WrappedBuffer) {
+        unsafe {
+            self.game.device().virtual_device().cmd_bind_vertex_buffers(
+                self.command_buffer,
+                0,
+                slice::from_ref(&buffer.vk_buffer),
+                slice::from_ref(&vk::DeviceSize::from(0u32))
+            );
         }
     }
 

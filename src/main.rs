@@ -1,5 +1,10 @@
+#![feature(get_mut_unchecked)]
+
 pub mod game;
 
+use std::mem::size_of;
+use ash::vk::BufferUsageFlags;
+use glam::{Vec2, Vec3};
 use log::info;
 use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
@@ -7,6 +12,12 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use crate::game::Game;
 use crate::game::render::GameRenderer;
+
+#[repr(C)]
+pub struct Vertex {
+    position: Vec2,
+    color: Vec3
+}
 
 fn main() {
     simple_logger::init().unwrap();
@@ -22,10 +33,17 @@ fn main() {
 
     // Game Init
     info!("Initializing Vesuvius");
-    let game = Game::new(window).unwrap();
+    let mut game = Game::new(window).unwrap();
     info!("Successfully requested device '{}'", game.device());
     let mut renderer = GameRenderer::new(game.clone()).unwrap();
     renderer.init_pipelines().unwrap();
+
+    let buffer = game.device_mut().create_buffer(BufferUsageFlags::VERTEX_BUFFER, size_of::<Vertex>() * 3).unwrap();
+    buffer.write([
+        Vertex { position: Vec2::new(-0.5, -0.5), color: Vec3::new(1.0, 0.0, 1.0) },
+        Vertex { position: Vec2::new(0.5, 0.5), color: Vec3::new(1.0, 1.0, 1.0) },
+        Vertex { position: Vec2::new(-0.5, 0.5), color: Vec3::new(0.0, 1.0, 1.0) }
+    ]).unwrap();
 
     // Game Loop
     info!("Init game loop and display window");
@@ -44,6 +62,7 @@ fn main() {
                 renderer.clear_color(0.0, 0.0, 0.0, 1.0);
 
                 renderer.apply_pipeline("triangle");
+                renderer.bind_vertex_buffer(&buffer);
                 renderer.draw(3);
 
                 renderer.end().unwrap();

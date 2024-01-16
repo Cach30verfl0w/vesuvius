@@ -26,6 +26,11 @@ struct GameInner {
 impl Drop for GameInner {
     fn drop(&mut self) {
         unsafe {
+            for buffer in self.device.allocated_buffers() {
+                vk_mem_alloc::destroy_buffer(*self.device.allocator(), buffer.vk_buffer, buffer.alloc);
+            }
+
+            vk_mem_alloc::destroy_allocator(*self.device.allocator());
             self.device.virtual_device().destroy_device(None);
         }
     }
@@ -73,6 +78,11 @@ impl Game {
             instance,
             window
         })))
+    }
+
+    #[inline]
+    pub fn device_mut(&mut self) -> &mut WrappedDevice {
+        &mut unsafe { Rc::get_mut_unchecked(&mut self.0) }.device
     }
 
     #[inline]

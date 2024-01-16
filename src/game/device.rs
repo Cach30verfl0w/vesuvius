@@ -4,14 +4,15 @@ use std::rc::Rc;
 use std::slice;
 use ash::{Device, Instance, vk};
 use ash::vk::PhysicalDevice;
-use vk_mem_alloc::{Allocation, AllocationInfo, Allocator, AllocatorCreateFlags, AllocatorCreateInfo};
+use vk_mem_alloc::{Allocation, AllocationCreateFlags, AllocationInfo, Allocator, AllocatorCreateInfo};
 use crate::game::Result;
 
 pub struct WrappedDeviceInner {
     instance: Instance,
     phy_device: PhysicalDevice,
     virtual_device: Device,
-    allocator: Allocator
+    allocator: Allocator,
+    pub allocated_buffers: Vec<WrappedBuffer>
 }
 
 #[derive(Clone)]
@@ -47,40 +48,41 @@ impl WrappedDevice {
                     &instance,
                     phy_device,
                     &virtual_device,
-                    Some(&AllocatorCreateInfo {
-                        flags: AllocatorCreateFlags::BUFFER_DEVICE_ADDRESS,
-                        ..Default::default()
-                    })
+                    Some(&AllocatorCreateInfo::default())
                 )
             }?,
             virtual_device,
             phy_device,
-            instance
+            instance,
+            allocated_buffers: Vec::new()
         })))
     }
 
-    pub fn create_buffer(&self, usage: vk::BufferUsageFlags, size: u64) -> Result<WrappedBuffer> {
+    pub fn create_buffer(&mut self, usage: vk::BufferUsageFlags, size: usize) -> Result<WrappedBuffer> {
         let buffer_create_info = vk::BufferCreateInfo {
             usage,
-            size,
+            size: size as u64,
             ..Default::default()
         };
 
         let alloc_create_info = vk_mem_alloc::AllocationCreateInfo {
-            usage: vk_mem_alloc::MemoryUsage::AUTO_PREFER_DEVICE,
+            usage: vk_mem_alloc::MemoryUsage::AUTO_PREFER_HOST,
+            flags: AllocationCreateFlags::HOST_ACCESS_SEQUENTIAL_WRITE,
             ..Default::default()
         };
 
         let (buffer, alloc, alloc_info) = unsafe {
             vk_mem_alloc::create_buffer(self.0.allocator, &buffer_create_info, &alloc_create_info)
         }?;
-        
-        Ok(WrappedBuffer {
+
+        let buffer = WrappedBuffer {
             device: self.clone(),
-            alloc_info,
-            buffer,
+            _alloc_info: alloc_info,
+            vk_buffer: buffer,
             alloc
-        })
+        };
+        unsafe { Rc::get_mut_unchecked(&mut self.0) }.allocated_buffers.push(buffer.clone());
+        Ok(buffer)
     }
 
     #[inline]
@@ -98,20 +100,29 @@ impl WrappedDevice {
         &self.0.virtual_device
     }
 
+    #[inline]
+    pub fn allocated_buffers(&self) -> &Vec<WrappedBuffer> {
+        &self.0.allocated_buffers
+    }
+
 }
 
 #[derive(Clone)]
 pub struct WrappedBuffer {
     device: WrappedDevice,
-    buffer: vk::Buffer,
-    alloc: Allocation,
-    alloc_info: AllocationInfo
+    pub(crate) vk_buffer: vk::Buffer,
+    pub(crate) alloc: Allocation,
+    _alloc_info: AllocationInfo
 }
 
-impl Drop for WrappedBuffer {
-    fn drop(&mut self) {
+impl WrappedBuffer {
+    pub fn write<T>(&self, data: T) -> Result<()> {
+        let allocator = *self.device.allocator();
         unsafe {
-            vk_mem_alloc::destroy_buffer(*self.device.allocator(), self.buffer, self.alloc);
+            let memory_ptr = vk_mem_alloc::map_memory(allocator, self.alloc)?;
+            std::ptr::copy_nonoverlapping(&data as *const T, memory_ptr as *mut T, 1);
+            vk_mem_alloc::unmap_memory(allocator, self.alloc);
         }
+        Ok(())
     }
 }

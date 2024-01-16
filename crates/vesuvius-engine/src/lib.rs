@@ -1,6 +1,9 @@
+#![feature(get_mut_unchecked)]
+
 pub mod error;
 pub mod device;
 pub mod render;
+pub mod screen;
 
 extern crate ash;
 extern crate thiserror;
@@ -22,6 +25,7 @@ use raw_window_handle::HasRawDisplayHandle;
 use winit::window::Window;
 use device::WrappedDevice;
 use error::Error;
+use screen::Screen;
 
 pub mod vesuvius_winit {
     pub use winit::*;
@@ -40,8 +44,11 @@ struct AppInner {
     /// Reference to the main graphics device
     main_device: ManuallyDrop<WrappedDevice>,
 
-    // The game window itself
-    window: Window
+    /// The game window itself
+    window: Window,
+
+    /// The current screen (game state) of the application
+    current_screen: Option<Box<dyn Screen>>
 }
 
 impl Drop for AppInner {
@@ -93,8 +100,25 @@ impl App {
             ),
             entry,
             instance,
-            window
+            window,
+            current_screen: None
         })))
+    }
+
+    pub fn open_screen(&mut self, screen: Box<dyn Screen>) {
+        let immutable_clone = self.clone();
+        let inner_application = unsafe { Arc::get_mut_unchecked(&mut self.0) };
+        if let Some(previous_screen) = inner_application.current_screen.as_mut() {
+            previous_screen.on_close(&immutable_clone);
+        }
+
+        inner_application.current_screen = Some(screen);
+        inner_application.current_screen.as_mut().unwrap().init(&immutable_clone);
+    }
+
+    #[inline]
+    pub fn screen(&self) -> Option<&Box<dyn Screen>> {
+        self.0.current_screen.as_ref()
     }
 
     #[inline]

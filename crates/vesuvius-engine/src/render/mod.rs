@@ -1,74 +1,68 @@
 pub mod pipeline;
+pub mod buffer;
 
-use std::path::Path;
-use std::{fs, mem, slice};
-use ash::extensions::khr::Swapchain;
+use std::{mem, slice};
+use ash::extensions::khr::{Surface, Swapchain};
 use ash::vk;
-use log::info;
-use notify::{RecursiveMode, Watcher};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
-use crate::game::device::WrappedBuffer;
-use crate::game::Game;
-use crate::game::render::pipeline::RenderPipeline;
+use render::buffer::Buffer;
+use render::pipeline::RenderPipeline;
+use crate::App;
+use crate::Result;
 
-use crate::game::Result;
+#[derive(Clone)]
+pub struct GameRenderer {
+    application: App,
+    surface: vk::SurfaceKHR,
 
-/// This is the main game renderer for this game. This wraps around the verbose Vulkan API and provides the
-/// functionality to simply create and manage shaders etc.
-pub(crate) struct GameRenderer<'a> {
-    game: Game<'a>,
-    _watcher: Box<dyn Watcher>,
+    images: Vec<vk::Image>,
+    image_views: Vec<vk::ImageView>,
+    current_image_index: u32,
+
     swapchain_loader: Swapchain,
     swapchain: vk::SwapchainKHR,
-    image_views: Vec<vk::ImageView>,
-    images: Vec<vk::Image>,
+
     command_pool: vk::CommandPool,
     command_buffer: vk::CommandBuffer,
+
     submit_semaphore: vk::Semaphore,
     present_semaphore: vk::Semaphore,
-    queue: vk::Queue,
-    current_image_index: u32,
-    pipelines: Vec<RenderPipeline>
+
+    queue: vk::Queue
 }
 
-impl Drop for GameRenderer<'_> {
+impl Drop for GameRenderer {
     fn drop(&mut self) {
-        let device = &self.game.device().virtual_device();
+        let device = self.application.main_device().virtual_device();
+        let surface_loader = Surface::new(self.application.entry(), self.application.instance());
         unsafe {
-            for pipeline in self.pipelines.iter() {
-                for shader in pipeline.shader_modules.iter() {
-                    device.destroy_shader_module(shader.vulkan_shader_module.unwrap(), None);
-                }
-
-                device.destroy_pipeline(pipeline.vulkan_pipeline.unwrap(), None);
-                device.destroy_pipeline_layout(pipeline.vulkan_pipeline_layout.unwrap(), None);
-            }
-
             device.destroy_semaphore(self.submit_semaphore, None);
             device.destroy_semaphore(self.present_semaphore, None);
-            for image_view in &self.image_views {
+            for image_view in self.image_views.iter() {
                 device.destroy_image_view(*image_view, None);
             }
 
             self.swapchain_loader.destroy_swapchain(self.swapchain, None);
+            surface_loader.destroy_surface(self.surface, None);
             device.free_command_buffers(self.command_pool, slice::from_ref(&self.command_buffer));
             device.destroy_command_pool(self.command_pool, None);
         }
     }
 }
 
-impl<'a> GameRenderer<'a> {
+impl GameRenderer {
 
-    /// This function creates the surface, swapchain etc. by the specified game instance. It also initialises the
-    /// filesystem watcher for the assets/resources.
-    pub(crate) fn new(game: Game<'a>) -> Result<Self> {
-        let window = game.window();
-        let surface = unsafe { ash_window::create_surface(&game.0.entry, &game.0.instance, window.raw_display_handle(),
-                                                          window.raw_window_handle(), None)? };
-        let device = game.device().virtual_device();
+    pub fn new(application: App) -> Result<Self> {
+        let device = application.main_device().virtual_device();
+        let window = application.window();
+        let surface = unsafe {
+            ash_window::create_surface(application.entry(), application.instance(), window.raw_display_handle(),
+                                       window.raw_window_handle(), None)
+        }?;
+
 
         // Create swapchain
-        let swapchain_loader = Swapchain::new(&game.0.instance, &device);
+        let swapchain_loader = Swapchain::new(application.instance(), device);
         let swapchain_create_info = vk::SwapchainCreateInfoKHR::default()
             .surface(surface)
             .min_image_count(2)
@@ -82,7 +76,6 @@ impl<'a> GameRenderer<'a> {
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
             .present_mode(vk::PresentModeKHR::FIFO);
         let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None) }?;
-        info!("Swapchain created by Game renderer");
 
         // Create image views
         let images = unsafe { swapchain_loader.get_swapchain_images(swapchain) }?;
@@ -108,25 +101,11 @@ impl<'a> GameRenderer<'a> {
             .command_buffer_count(1);
         let command_buffer = unsafe { device.allocate_command_buffers(&command_buffer_alloc_info) }?[0];
 
-        // Initialize filesystem resource/assets watcher
-        let mut watcher = notify::recommended_watcher(|event_result| {
-            match event_result {
-                Ok(event) => {
-                    // TODO: Implement live resource updating etc.
-                    println!("{:?}", event);
-                },
-                Err(error) => panic!("Error while operating with the resource watcher => {0}", error)
-            }
-        })?;
-        watcher.watch(Path::new("assets"), RecursiveMode::Recursive)?;
-
         // Return game renderer to caller
         Ok(Self {
             submit_semaphore: unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?,
             present_semaphore: unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?,
             queue: unsafe { device.get_device_queue(0, 0) },
-            game: game.clone(),
-            _watcher: Box::new(watcher),
             swapchain_loader,
             swapchain,
             images,
@@ -134,22 +113,9 @@ impl<'a> GameRenderer<'a> {
             command_pool,
             command_buffer,
             current_image_index: 0,
-            pipelines: Vec::new()
+            application,
+            surface
         })
-    }
-
-    pub fn init_pipelines(&mut self) -> Result<()> {
-        for path_result in fs::read_dir("assets/pipelines")? {
-            let path = path_result?.path();
-            if !path.is_file() || !path.to_str().unwrap().ends_with(".json") {
-                continue;
-            }
-
-            let mut pipeline = RenderPipeline::from_file(path)?;
-            pipeline.compile(&self.game)?;
-            self.pipelines.push(pipeline);
-        }
-        Ok(())
     }
 
     pub fn begin(&mut self) -> Result<()> {
@@ -162,7 +128,7 @@ impl<'a> GameRenderer<'a> {
             )
         }?.0;
 
-        let device = self.game.device().virtual_device();
+        let device = self.application.main_device().virtual_device();
         unsafe { device.reset_command_pool(self.command_pool, vk::CommandPoolResetFlags::RELEASE_RESOURCES) }?;
         unsafe { device.reset_command_buffer(self.command_buffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES) }?;
         unsafe { device.begin_command_buffer(self.command_buffer, &vk::CommandBufferBeginInfo::default()) }?;
@@ -188,45 +154,6 @@ impl<'a> GameRenderer<'a> {
         Ok(())
     }
 
-    pub fn apply_pipeline(&self, name: &str) {
-        let pipeline = self.pipelines.iter().find(|pipeline| pipeline.name == name).unwrap();
-        unsafe {
-            self.game.device().virtual_device().cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::GRAPHICS,
-                                                                pipeline.vulkan_pipeline.unwrap());
-        }
-    }
-
-    pub fn bind_vertex_buffer(&self, buffer: &WrappedBuffer) {
-        unsafe {
-            self.game.device().virtual_device().cmd_bind_vertex_buffers(
-                self.command_buffer,
-                0,
-                slice::from_ref(&buffer.vk_buffer),
-                slice::from_ref(&vk::DeviceSize::from(0u32))
-            );
-        }
-    }
-
-    pub fn draw(&self, vertices: u32) {
-        unsafe {
-            self.game.device().virtual_device().cmd_draw(self.command_buffer, vertices, 4, 1, 0);
-        }
-    }
-
-    pub fn draw_indexed(&self, index_buffer: &WrappedBuffer) {
-        unsafe {
-            self.game.device().virtual_device().cmd_bind_index_buffer(
-                self.command_buffer,
-                index_buffer.vk_buffer,
-                vk::DeviceSize::from(0u32),
-                vk::IndexType::UINT16
-            );
-
-            let indices = (index_buffer.alloc_info.size / mem::size_of::<u16>() as u64) as u32;
-            self.game.device().virtual_device().cmd_draw_indexed(self.command_buffer, indices, 1, 0, 0, 0);
-        }
-    }
-
     pub fn clear_color(&self, red: f32, green: f32, blue: f32, alpha: f32) {
         let rendering_attachment_info = vk::RenderingAttachmentInfo::default()
             .image_view(self.image_views[self.current_image_index as usize])
@@ -239,7 +166,7 @@ impl<'a> GameRenderer<'a> {
                 }
             });
 
-        let window_size = self.game.window().inner_size();
+        let window_size = self.application.window().inner_size();
         let rendering_info = vk::RenderingInfo::default()
             .layer_count(1)
             .render_area(vk::Rect2D {
@@ -250,14 +177,13 @@ impl<'a> GameRenderer<'a> {
             })
             .color_attachments(slice::from_ref(&rendering_attachment_info));
         unsafe {
-            let device = self.game.device();
-            device.virtual_device().cmd_begin_rendering(self.command_buffer, &rendering_info);
+            self.application.main_device().virtual_device().cmd_begin_rendering(self.command_buffer, &rendering_info);
         }
 
     }
 
     pub fn end(&self) -> Result<()> {
-        let device = &self.game.0.device.virtual_device();
+        let device = &self.application.main_device().virtual_device();
         unsafe { device.cmd_end_rendering(self.command_buffer) };
 
         let image_memory_barrier = vk::ImageMemoryBarrier::default()
@@ -301,9 +227,41 @@ impl<'a> GameRenderer<'a> {
         Ok(())
     }
 
-    #[inline]
-    pub fn find_pipeline(&self, name: &str) -> Option<&RenderPipeline> {
-        self.pipelines.iter().find(|pipeline| pipeline.name == name)
+    pub fn bind_pipeline(&self, pipeline: &RenderPipeline) {
+        unsafe {
+            self.application.main_device().virtual_device().cmd_bind_pipeline(
+                self.command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                pipeline.vulkan_pipeline.unwrap()
+            );
+        }
+    }
+
+    pub fn bind_vertex_buffer(&self, buffer: &Buffer) {
+        unsafe {
+            self.application.main_device().virtual_device().cmd_bind_vertex_buffers(
+                self.command_buffer,
+                0,
+                slice::from_ref(&buffer.buffer),
+                slice::from_ref(&vk::DeviceSize::from(0u32))
+            );
+        }
+    }
+
+    pub fn draw(&self, vertices: u32) {
+        unsafe {
+            self.application.main_device().virtual_device().cmd_draw(self.command_buffer, vertices, 4, 1, 0);
+        }
+    }
+
+    pub fn draw_indexed(&self, index_buffer: &Buffer) {
+        let device = self.application.main_device().virtual_device();
+        let indices = (index_buffer.alloc_info.size / mem::size_of::<u16>() as u64) as u32;
+        unsafe {
+            device.cmd_bind_index_buffer(self.command_buffer, index_buffer.buffer, vk::DeviceSize::from(0u32),
+                vk::IndexType::UINT16);
+            device.cmd_draw_indexed(self.command_buffer, indices, 1, 0, 0, 0);
+        }
     }
 
 }

@@ -1,0 +1,20 @@
+[package]
+name = "vesuvius-engine"
+description = "Tiny game engine for the Vesuvius strategy game"
+authors = ["Cedric Hammes <cach30verfl0w@gmail.com>"]
+version = "1.0.0-dev.1"
+
+[dependencies]
+ash = { git = "https://github.com/ProjectKML/ash" }
+ash-window = { git = "https://github.com/ProjectKML/ash" }
+vk-mem-alloc = { git = "https://github.com/ProjectKML/vk-mem-alloc-rs" }
+raw-window-handle = "0.5.0"
+thiserror = "1.0.56"
+itertools = "0.12.0"
+winit = "0.27.4"
+
+serde_json = "1.0.111"
+serde = { version = "1.0.195", features = ["derive"] }
+spirv-reflect = "0.2.3"
+shaderc = "0.8.3"
+log = "0.4.20"

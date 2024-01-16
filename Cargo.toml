@@ -1,25 +1,4 @@
-[package]
-name = "vesuvius"
-description = "Modern Day Strategy Game with Vulkan"
-authors = ["Cedric Hammes <cach30verfl0w@gmail.com>"]
-version = "1.0.0"
-edition = "2021"
-
-[dependencies]
-ash = { git = "https://github.com/ProjectKML/ash" }
-ash-window = { git = "https://github.com/ProjectKML/ash" }
-winit = "0.27.4"
-raw-window-handle = "0.5.0"
-glam = "0.25.0"
-itertools = "0.12.0"
-thiserror = "1.0.56"
-log = "0.4.20"
-simple_logger = "4.3.3"
-
-shaderc = "0.8.3"
-memoffset = "0.9.0"
-notify = "6.1.1"
-serde_json = "1.0.111"
-serde = { version = "1.0.195", features = ["derive"] }
-spirv-reflect = "0.2.3"
-vk-mem-alloc = { git = "https://github.com/ProjectKML/vk-mem-alloc-rs" }
+[workspace]
+members = [
+    "crates/*"
+]

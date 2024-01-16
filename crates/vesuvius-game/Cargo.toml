@@ -1,0 +1,14 @@
+[package]
+name = "vesuvius-game"
+description = "Modern Day Strategy Game with Vulkan"
+authors = ["Cedric Hammes <cach30verfl0w@gmail.com>"]
+version = "1.0.0-dev.1"
+
+[dependencies]
+ash-window = { git = "https://github.com/ProjectKML/ash" }
+ash = { git = "https://github.com/ProjectKML/ash" }
+vesuvius-engine = { path = "../vesuvius-engine" }
+
+simple_logger = "4.3.3"
+log = "0.4.20"
+glam = "0.25.0"

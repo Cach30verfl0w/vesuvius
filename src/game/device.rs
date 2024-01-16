@@ -59,10 +59,10 @@ impl WrappedDevice {
         })))
     }
 
-    pub fn create_buffer(&self, usage: vk::BufferUsageFlags, size: usize) -> Result<()> {
+    pub fn create_buffer(&self, usage: vk::BufferUsageFlags, size: u64) -> Result<WrappedBuffer> {
         let buffer_create_info = vk::BufferCreateInfo {
             usage,
-            size: vk::DeviceSize::from(size),
+            size,
             ..Default::default()
         };
 
@@ -74,7 +74,13 @@ impl WrappedDevice {
         let (buffer, alloc, alloc_info) = unsafe {
             vk_mem_alloc::create_buffer(self.0.allocator, &buffer_create_info, &alloc_create_info)
         }?;
-
+        
+        Ok(WrappedBuffer {
+            device: self.clone(),
+            alloc_info,
+            buffer,
+            alloc
+        })
     }
 
     #[inline]

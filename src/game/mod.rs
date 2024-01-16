@@ -1,7 +1,6 @@
 pub mod error;
 pub mod device;
 pub mod render;
-pub mod buffer;
 
 use std::ffi::CStr;
 use std::rc::Rc;

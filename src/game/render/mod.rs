@@ -276,4 +276,9 @@ impl<'a> GameRenderer {
         Ok(())
     }
 
+    #[inline]
+    pub fn find_pipeline(&self, name: &str) -> Option<&RenderPipeline> {
+        self.pipelines.iter().find(|pipeline| pipeline.name == name)
+    }
+
 }

@@ -38,11 +38,22 @@ fn main() {
     let mut renderer = GameRenderer::new(game.clone()).unwrap();
     renderer.init_pipelines().unwrap();
 
-    let buffer = game.device_mut().create_buffer(BufferUsageFlags::VERTEX_BUFFER, size_of::<Vertex>() * 3).unwrap();
-    buffer.write([
-        Vertex { position: Vec2::new(-0.5, -0.5), color: Vec3::new(1.0, 0.0, 1.0) },
-        Vertex { position: Vec2::new(0.5, 0.5), color: Vec3::new(1.0, 1.0, 1.0) },
-        Vertex { position: Vec2::new(-0.5, 0.5), color: Vec3::new(0.0, 1.0, 1.0) }
+    let vertex_buffer = game.device_mut().new_buffer(BufferUsageFlags::VERTEX_BUFFER, size_of::<Vertex>() * 4).unwrap();
+    vertex_buffer.write([
+        Vertex { position: Vec2::new(-0.5, -0.5), color: Vec3::new(1.0, 0.0, 0.0) },
+        Vertex { position: Vec2::new(0.5, -0.5), color: Vec3::new(1.0, 1.0, 0.0) },
+        Vertex { position: Vec2::new(0.5, 0.5), color: Vec3::new(0.0, 1.0, 0.0) },
+        Vertex { position: Vec2::new(-0.5, 0.5), color: Vec3::new(0.0, 0.0, 1.0) }
+    ]).unwrap();
+
+    let index_buffer = game.device_mut().new_buffer(BufferUsageFlags::INDEX_BUFFER, size_of::<u16>() * 6).unwrap();
+    index_buffer.write([
+        0u16,
+        1u16,
+        2u16,
+        2u16,
+        3u16,
+        0u16
     ]).unwrap();
 
     // Game Loop
@@ -62,8 +73,8 @@ fn main() {
                 renderer.clear_color(0.0, 0.0, 0.0, 1.0);
 
                 renderer.apply_pipeline("triangle");
-                renderer.bind_vertex_buffer(&buffer);
-                renderer.draw(3);
+                renderer.bind_vertex_buffer(&vertex_buffer);
+                renderer.draw_indexed(&index_buffer);
 
                 renderer.end().unwrap();
             }

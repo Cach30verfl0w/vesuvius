@@ -58,7 +58,7 @@ impl WrappedDevice {
         })))
     }
 
-    pub fn create_buffer(&mut self, usage: vk::BufferUsageFlags, size: usize) -> Result<WrappedBuffer> {
+    pub fn new_buffer(&mut self, usage: vk::BufferUsageFlags, size: usize) -> Result<WrappedBuffer> {
         let buffer_create_info = vk::BufferCreateInfo {
             usage,
             size: size as u64,
@@ -77,7 +77,7 @@ impl WrappedDevice {
 
         let buffer = WrappedBuffer {
             device: self.clone(),
-            _alloc_info: alloc_info,
+            alloc_info,
             vk_buffer: buffer,
             alloc
         };
@@ -112,7 +112,7 @@ pub struct WrappedBuffer {
     device: WrappedDevice,
     pub(crate) vk_buffer: vk::Buffer,
     pub(crate) alloc: Allocation,
-    _alloc_info: AllocationInfo
+    pub(crate) alloc_info: AllocationInfo
 }
 
 impl WrappedBuffer {

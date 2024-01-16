@@ -1,7 +1,7 @@
 pub mod pipeline;
 
 use std::path::Path;
-use std::{fs, slice};
+use std::{fs, mem, slice};
 use ash::extensions::khr::Swapchain;
 use ash::vk;
 use log::info;
@@ -209,8 +209,21 @@ impl<'a> GameRenderer {
 
     pub fn draw(&self, vertices: u32) {
         unsafe {
-            // 1. parameter: Vertex Count
-            self.game.device().virtual_device().cmd_draw(self.command_buffer, vertices, 1, 0, 0);
+            self.game.device().virtual_device().cmd_draw(self.command_buffer, vertices, 4, 1, 0);
+        }
+    }
+
+    pub fn draw_indexed(&self, index_buffer: &WrappedBuffer) {
+        unsafe {
+            self.game.device().virtual_device().cmd_bind_index_buffer(
+                self.command_buffer,
+                index_buffer.vk_buffer,
+                vk::DeviceSize::from(0u32),
+                vk::IndexType::UINT16
+            );
+
+            let indices = (index_buffer.alloc_info.size / mem::size_of::<u16>() as u64) as u32;
+            self.game.device().virtual_device().cmd_draw_indexed(self.command_buffer, indices, 1, 0, 0, 0);
         }
     }
 

@@ -1,5 +1,5 @@
 # Vesuvius
-Modern Day Strategy Game, written in Rust with Vulkan. This project is an educational project to learn Shader Programming and how to work with Vulkan. A lot mechanics in this game are inspired by the WW2 Strategy Game [Hearts of Iron IV](https://en.wikipedia.org/wiki/Hearts_of_Iron_IV).
+Modern Day Strategy Game, written in Rust with Vulkan. This project is an educational project to learn Shader Programming and how to work with Vulkan. Many mechanics in this game are inspired by the WW2 Strategy Game [Hearts of Iron IV](https://en.wikipedia.org/wiki/Hearts_of_Iron_IV).
 
 This game contains the following scenarios:
 - 1991: Dissolvement of the Soviet Union

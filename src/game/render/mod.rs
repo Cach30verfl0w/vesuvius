@@ -15,8 +15,8 @@ use crate::game::Result;
 
 /// This is the main game renderer for this game. This wraps around the verbose Vulkan API and provides the
 /// functionality to simply create and manage shaders etc.
-pub(crate) struct GameRenderer {
-    game: Game,
+pub(crate) struct GameRenderer<'a> {
+    game: Game<'a>,
     _watcher: Box<dyn Watcher>,
     swapchain_loader: Swapchain,
     swapchain: vk::SwapchainKHR,
@@ -31,7 +31,7 @@ pub(crate) struct GameRenderer {
     pipelines: Vec<RenderPipeline>
 }
 
-impl Drop for GameRenderer {
+impl Drop for GameRenderer<'_> {
     fn drop(&mut self) {
         let device = &self.game.device().virtual_device();
         unsafe {
@@ -57,11 +57,11 @@ impl Drop for GameRenderer {
     }
 }
 
-impl<'a> GameRenderer {
+impl<'a> GameRenderer<'a> {
 
     /// This function creates the surface, swapchain etc. by the specified game instance. It also initialises the
     /// filesystem watcher for the assets/resources.
-    pub(crate) fn new(game: Game) -> Result<Self> {
+    pub(crate) fn new(game: Game<'a>) -> Result<Self> {
         let window = game.window();
         let surface = unsafe { ash_window::create_surface(&game.0.entry, &game.0.instance, window.raw_display_handle(),
                                                           window.raw_window_handle(), None)? };
@@ -125,7 +125,7 @@ impl<'a> GameRenderer {
             submit_semaphore: unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?,
             present_semaphore: unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?,
             queue: unsafe { device.get_device_queue(0, 0) },
-            game,
+            game: game.clone(),
             _watcher: Box::new(watcher),
             swapchain_loader,
             swapchain,

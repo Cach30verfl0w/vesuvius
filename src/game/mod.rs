@@ -1,29 +1,33 @@
 pub mod error;
 pub mod device;
 pub mod render;
+pub mod screen;
 
 use std::ffi::CStr;
 use std::rc::Rc;
 use ash::{Entry, Instance, vk};
 use ash::vk::{MemoryHeapFlags, PhysicalDevice};
 use itertools::Itertools;
+use log::debug;
 use raw_window_handle::HasRawDisplayHandle;
 use winit::window::Window;
 use crate::game::device::WrappedDevice;
 use crate::game::error::EngineError;
+use crate::game::screen::Screen;
 
 pub type Result<T> = std::result::Result<T, EngineError>;
 
 /// This struct is the internal store of the vulkan instance, the main graphics device and the game window. This is the
 /// internal holder of the data in the Game struct (which is internally an reference counter).
-struct GameInner {
+pub(crate) struct GameInner<'a> {
     entry: Entry,
     instance: Instance,
     device: WrappedDevice,
-    window: Window
+    window: Window,
+    pub(crate) current_screen: Option<Box<dyn Screen + 'a>>
 }
 
-impl Drop for GameInner {
+impl Drop for GameInner<'_> {
     fn drop(&mut self) {
         unsafe {
             for buffer in self.device.allocated_buffers() {
@@ -37,9 +41,9 @@ impl Drop for GameInner {
 }
 
 #[derive(Clone)]
-pub(crate) struct Game(Rc<GameInner>);
+pub(crate) struct Game<'a>(pub(crate) Rc<GameInner<'a>>);
 
-impl Game {
+impl<'a> Game<'a> {
 
 
     /// This function creates the vulkan part of the game instance with some data, provided by the specified window, and
@@ -76,8 +80,25 @@ impl Game {
                 .sorted_by(|a, b| local_heap_size_of(&instance, a).cmp(&local_heap_size_of(&instance, b)))
                 .next().unwrap())?,
             instance,
-            window
+            window,
+            current_screen: None
         })))
+    }
+
+    pub fn open_screen<S: Screen + 'a>(&mut self, mut screen: S) {
+        let mut mutable_clone = self.clone();
+        let game = unsafe { Rc::get_mut_unchecked(&mut self.0) };
+
+        if let Some(last_screen) = game.current_screen.as_mut() {
+            last_screen.on_close(&mut mutable_clone);
+        }
+
+        screen.init(&mut mutable_clone);
+        debug!("Opening to screen '{}'", S::title());
+        game.current_screen = Some(Box::new(screen));
+        self.window().set_title(&format!("{} - {}",
+                                         concat!("Vesuvious v", env!("CARGO_PKG_VERSION"), " by Cach30verfl0w"),
+                                         S::title()));
     }
 
     #[inline]

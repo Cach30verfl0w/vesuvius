@@ -2,8 +2,6 @@
 
 pub mod game;
 
-use std::mem::size_of;
-use ash::vk::BufferUsageFlags;
 use glam::{Vec2, Vec3};
 use log::info;
 use winit::dpi::PhysicalSize;
@@ -12,6 +10,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use crate::game::Game;
 use crate::game::render::GameRenderer;
+use crate::game::screen::MainMenuScreen;
 
 #[repr(C)]
 pub struct Vertex {
@@ -37,24 +36,7 @@ fn main() {
     info!("Successfully requested device '{}'", game.device());
     let mut renderer = GameRenderer::new(game.clone()).unwrap();
     renderer.init_pipelines().unwrap();
-
-    let vertex_buffer = game.device_mut().new_buffer(BufferUsageFlags::VERTEX_BUFFER, size_of::<Vertex>() * 4).unwrap();
-    vertex_buffer.write([
-        Vertex { position: Vec2::new(-0.5, -0.5), color: Vec3::new(1.0, 0.0, 0.0) },
-        Vertex { position: Vec2::new(0.5, -0.5), color: Vec3::new(1.0, 1.0, 0.0) },
-        Vertex { position: Vec2::new(0.5, 0.5), color: Vec3::new(0.0, 1.0, 0.0) },
-        Vertex { position: Vec2::new(-0.5, 0.5), color: Vec3::new(0.0, 0.0, 1.0) }
-    ]).unwrap();
-
-    let index_buffer = game.device_mut().new_buffer(BufferUsageFlags::INDEX_BUFFER, size_of::<u16>() * 6).unwrap();
-    index_buffer.write([
-        0u16,
-        1u16,
-        2u16,
-        2u16,
-        3u16,
-        0u16
-    ]).unwrap();
+    game.open_screen(MainMenuScreen::default());
 
     // Game Loop
     info!("Init game loop and display window");
@@ -72,9 +54,9 @@ fn main() {
                 renderer.begin().unwrap();
                 renderer.clear_color(0.0, 0.0, 0.0, 1.0);
 
-                renderer.apply_pipeline("triangle");
-                renderer.bind_vertex_buffer(&vertex_buffer);
-                renderer.draw_indexed(&index_buffer);
+                if let Some(current_screen) = game.0.current_screen.as_ref() {
+                    current_screen.render(&mut renderer);
+                }
 
                 renderer.end().unwrap();
             }

@@ -6,13 +6,14 @@ extern crate ash;
 pub mod screens;
 
 use glam::{Vec2, Vec3};
-use log::info;
+use log::{debug, info};
 use screens::MainMenuScreen;
 use vesuvius_engine::vesuvius_winit::dpi::PhysicalSize;
 use vesuvius_engine::vesuvius_winit::event::{Event, WindowEvent};
 use vesuvius_engine::vesuvius_winit::event_loop::{ControlFlow, EventLoop};
 use vesuvius_engine::vesuvius_winit::window::WindowBuilder;
 use vesuvius_engine::App;
+use vesuvius_engine::debug::DebugExtension;
 use vesuvius_engine::render::GameRenderer;
 
 #[repr(C)]
@@ -40,6 +41,12 @@ fn main() {
 
     app.open_screen(Box::new(MainMenuScreen::default()));
     info!("Successfully created application and renderer");
+
+    #[cfg(feature = "debug_extensions")]
+    {
+        debug!("Game-internal debug extensions enabled (Game is compiled for debug)");
+        let debug_extension = DebugExtension::new(renderer.clone());
+    }
 
     // Game Loop
     info!("Init game loop and display game");

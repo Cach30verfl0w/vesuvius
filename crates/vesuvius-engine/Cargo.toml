@@ -4,17 +4,29 @@ description = "Tiny game engine for the Vesuvius strategy game"
 authors = ["Cedric Hammes <cach30verfl0w@gmail.com>"]
 version = "1.0.0-dev.1"
 
+[features]
+debug_extensions = ["dep:egui"]
+
 [dependencies]
+# Vulkan, Vulkan Window Integration and allocator
 ash = { git = "https://github.com/ProjectKML/ash" }
 ash-window = { git = "https://github.com/ProjectKML/ash" }
 vk-mem-alloc = { git = "https://github.com/ProjectKML/vk-mem-alloc-rs" }
+
+# Window Stuff
 raw-window-handle = "0.5.0"
-thiserror = "1.0.56"
-itertools = "0.12.0"
 winit = "0.27.4"
 
+# Shader loading, parsing and reflection implementation
 serde_json = "1.0.111"
 serde = { version = "1.0.195", features = ["derive"] }
 spirv-reflect = "0.2.3"
 shaderc = "0.8.3"
 log = "0.4.20"
+
+# The engine's debug extension
+egui = { version = "0.25.0", optional = true }
+
+# Other
+thiserror = "1.0.56"
+itertools = "0.12.0"

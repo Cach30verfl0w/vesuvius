@@ -4,6 +4,8 @@ pub mod error;
 pub mod device;
 pub mod render;
 pub mod screen;
+#[cfg(feature = "debug_extensions")]
+pub mod debug;
 
 extern crate ash;
 extern crate thiserror;
@@ -15,6 +17,7 @@ extern crate serde;
 extern crate spirv_reflect;
 extern crate shaderc;
 extern crate log;
+extern crate egui;
 
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
@@ -27,6 +30,13 @@ use device::WrappedDevice;
 use error::Error;
 use screen::Screen;
 
+/// Reexport egui if debug extensions enabled
+#[cfg(feature = "debug_extensions")]
+pub mod vesuvius_egui {
+    pub use egui::*;
+}
+
+/// Reexport winit
 pub mod vesuvius_winit {
     pub use winit::*;
 }

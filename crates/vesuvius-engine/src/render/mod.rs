@@ -3,6 +3,7 @@ pub mod buffer;
 
 use std::{fs, mem, slice};
 use std::collections::HashMap;
+use std::sync::Arc;
 use ash::extensions::khr::{Surface, Swapchain};
 use ash::vk;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
@@ -13,8 +14,7 @@ use render::pipeline::RenderPipeline;
 use crate::App;
 use crate::Result;
 
-#[derive(Clone)]
-pub struct GameRenderer {
+struct GameRendererInner {
     application: App,
     surface: vk::SurfaceKHR,
 
@@ -41,7 +41,7 @@ pub struct GameRenderer {
     descriptor_pool: Option<vk::DescriptorPool>
 }
 
-impl Drop for GameRenderer {
+impl Drop for GameRendererInner {
     fn drop(&mut self) {
         let device = self.application.main_device().virtual_device();
         let surface_loader = Surface::new(self.application.entry(), self.application.instance());
@@ -59,6 +59,9 @@ impl Drop for GameRenderer {
         }
     }
 }
+
+#[derive(Clone)]
+pub struct GameRenderer(Arc<GameRendererInner>);
 
 impl GameRenderer {
 
@@ -112,7 +115,7 @@ impl GameRenderer {
         let command_buffer = unsafe { device.allocate_command_buffers(&command_buffer_alloc_info) }?[0];
 
         // Return game renderer to caller
-        Ok(Self {
+        Ok(Self(Arc::new(GameRendererInner {
             submit_semaphore: unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?,
             present_semaphore: unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?,
             queue: unsafe { device.get_device_queue(0, 0) },
@@ -127,10 +130,12 @@ impl GameRenderer {
             surface,
             pipelines: Vec::new(),
             descriptor_pool: None
-        })
+        })))
     }
 
     pub fn reload(&mut self) -> Result<()> {
+        let inner = unsafe { Arc::get_mut_unchecked(&mut self.0) };
+
         // (Re)compile pipelines
         for pipeline_configurations in fs::read_dir("assets/pipelines").expect("Unable to find pipeline configs") {
             // Filter invalid configuration files
@@ -143,25 +148,25 @@ impl GameRenderer {
             let file_content = String::from_utf8(fs::read(&config_file)?)?;
             let pipeline_config: PipelineConfiguration = serde_json::from_str(&file_content)
                 .expect("Unable to read pipeline configuration");
-            match self.pipelines.iter_mut().find(|pipeline| pipeline.name == pipeline_config.name) {
+            match inner.pipelines.iter_mut().find(|pipeline| pipeline.name == pipeline_config.name) {
                 Some(pipeline) => pipeline.compile()?, // TODO: Reload only if changes are detected
                 None => {
-                    let mut pipeline = RenderPipeline::new(self.application.clone(), pipeline_config)?;
+                    let mut pipeline = RenderPipeline::new(inner.application.clone(), pipeline_config)?;
                     pipeline.compile()?;
-                    self.pipelines.push(pipeline);
+                    inner.pipelines.push(pipeline);
                 }
             }
         }
 
         // (Re)create descriptor pool on reflection information of shaders in pipeline
-        let device = self.application.main_device().virtual_device();
-        if let Some(descriptor_pool) = self.descriptor_pool {
+        let device = inner.application.main_device().virtual_device();
+        if let Some(descriptor_pool) = inner.descriptor_pool {
             unsafe {
                 device.destroy_descriptor_pool(descriptor_pool, None);
             }
         }
 
-        let descriptor_pool_sizes = self.pipelines.iter()
+        let descriptor_pool_sizes = inner.pipelines.iter()
             .map(|pipeline| pipeline.get_descriptor_count())
             .flatten()
             .fold(HashMap::new(), |mut descriptor_sizes, (descriptor_type, count)| {
@@ -179,37 +184,40 @@ impl GameRenderer {
             .pool_sizes(descriptor_pool_sizes.as_slice())
             .max_sets(1024);
 
-        self.descriptor_pool = Some(unsafe {
+        inner.descriptor_pool = Some(unsafe {
             device.create_descriptor_pool(&descriptor_pool_create_info, None)
         }?);
+
         Ok(())
     }
 
     pub fn begin(&mut self) -> Result<()> {
-        self.current_image_index = unsafe {
-            self.swapchain_loader.acquire_next_image(
-                self.swapchain,
+        let inner = unsafe { Arc::get_mut_unchecked(&mut self.0) };
+
+        inner.current_image_index = unsafe {
+            inner.swapchain_loader.acquire_next_image(
+                inner.swapchain,
                 u64::MAX,
-                self.submit_semaphore,
+                inner.submit_semaphore,
                 vk::Fence::null()
             )
         }?.0;
 
-        let device = self.application.main_device().virtual_device();
-        unsafe { device.reset_command_pool(self.command_pool, vk::CommandPoolResetFlags::RELEASE_RESOURCES) }?;
-        unsafe { device.reset_command_buffer(self.command_buffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES) }?;
-        unsafe { device.begin_command_buffer(self.command_buffer, &vk::CommandBufferBeginInfo::default()) }?;
+        let device = inner.application.main_device().virtual_device();
+        unsafe { device.reset_command_pool(inner.command_pool, vk::CommandPoolResetFlags::RELEASE_RESOURCES) }?;
+        unsafe { device.reset_command_buffer(inner.command_buffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES) }?;
+        unsafe { device.begin_command_buffer(inner.command_buffer, &vk::CommandBufferBeginInfo::default()) }?;
 
         let image_memory_barrier = vk::ImageMemoryBarrier::default()
             .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
             .old_layout(vk::ImageLayout::UNDEFINED)
             .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .image(self.images[self.current_image_index as usize])
+            .image(inner.images[inner.current_image_index as usize])
             .subresource_range(vk::ImageSubresourceRange::default().aspect_mask(vk::ImageAspectFlags::COLOR).level_count(1).layer_count(1));
 
         unsafe {
             device.cmd_pipeline_barrier(
-                self.command_buffer,
+                inner.command_buffer,
                 vk::PipelineStageFlags::TOP_OF_PIPE,
                 vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                 vk::DependencyFlags::empty(),
@@ -222,8 +230,10 @@ impl GameRenderer {
     }
 
     pub fn clear_color(&self, red: f32, green: f32, blue: f32, alpha: f32) {
+        let inner = &self.0;
+
         let rendering_attachment_info = vk::RenderingAttachmentInfo::default()
-            .image_view(self.image_views[self.current_image_index as usize])
+            .image_view(inner.image_views[inner.current_image_index as usize])
             .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::STORE)
@@ -233,7 +243,7 @@ impl GameRenderer {
                 }
             });
 
-        let window_size = self.application.window().inner_size();
+        let window_size = inner.application.window().inner_size();
         let rendering_info = vk::RenderingInfo::default()
             .layer_count(1)
             .render_area(vk::Rect2D {
@@ -244,25 +254,26 @@ impl GameRenderer {
             })
             .color_attachments(slice::from_ref(&rendering_attachment_info));
         unsafe {
-            self.application.main_device().virtual_device().cmd_begin_rendering(self.command_buffer, &rendering_info);
+            inner.application.main_device().virtual_device().cmd_begin_rendering(inner.command_buffer, &rendering_info);
         }
 
     }
 
     pub fn end(&self) -> Result<()> {
-        let device = &self.application.main_device().virtual_device();
-        unsafe { device.cmd_end_rendering(self.command_buffer) };
+        let inner = &self.0;
+        let device = &inner.application.main_device().virtual_device();
+        unsafe { device.cmd_end_rendering(inner.command_buffer) };
 
         let image_memory_barrier = vk::ImageMemoryBarrier::default()
             .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
             .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-            .image(self.images[self.current_image_index as usize])
+            .image(inner.images[inner.current_image_index as usize])
             .subresource_range(vk::ImageSubresourceRange::default().aspect_mask(vk::ImageAspectFlags::COLOR).level_count(1).layer_count(1));
 
         unsafe {
             device.cmd_pipeline_barrier(
-                self.command_buffer,
+                inner.command_buffer,
                 vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                 vk::PipelineStageFlags::BOTTOM_OF_PIPE,
                 vk::DependencyFlags::empty(),
@@ -273,21 +284,21 @@ impl GameRenderer {
         };
 
         // Move command buffer into executable state
-        unsafe { device.end_command_buffer(self.command_buffer) }?;
+        unsafe { device.end_command_buffer(inner.command_buffer) }?;
 
         // Submit and present queued commands
         let submit_info = vk::SubmitInfo::default()
-            .wait_semaphores(slice::from_ref(&self.submit_semaphore))
+            .wait_semaphores(slice::from_ref(&inner.submit_semaphore))
             .wait_dst_stage_mask(slice::from_ref(&vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT))
-            .command_buffers(slice::from_ref(&self.command_buffer))
-            .signal_semaphores(slice::from_ref(&self.present_semaphore));
-        unsafe { device.queue_submit(self.queue, slice::from_ref(&submit_info), vk::Fence::null()) }?;
+            .command_buffers(slice::from_ref(&inner.command_buffer))
+            .signal_semaphores(slice::from_ref(&inner.present_semaphore));
+        unsafe { device.queue_submit(inner.queue, slice::from_ref(&submit_info), vk::Fence::null()) }?;
 
         let present_info = vk::PresentInfoKHR::default()
-            .image_indices(slice::from_ref(&self.current_image_index))
-            .wait_semaphores(slice::from_ref(&self.present_semaphore))
-            .swapchains(slice::from_ref(&self.swapchain));
-        unsafe { self.swapchain_loader.queue_present(self.queue, &present_info) }?;
+            .image_indices(slice::from_ref(&inner.current_image_index))
+            .wait_semaphores(slice::from_ref(&inner.present_semaphore))
+            .swapchains(slice::from_ref(&inner.swapchain));
+        unsafe { inner.swapchain_loader.queue_present(inner.queue, &present_info) }?;
 
         // Wait for finish operations
         unsafe { device.device_wait_idle() }?;
@@ -295,9 +306,10 @@ impl GameRenderer {
     }
 
     pub fn bind_pipeline(&self, pipeline: &RenderPipeline) {
+        let inner = &self.0;
         unsafe {
-            self.application.main_device().virtual_device().cmd_bind_pipeline(
-                self.command_buffer,
+            inner.application.main_device().virtual_device().cmd_bind_pipeline(
+                inner.command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
                 pipeline.vulkan_pipeline.unwrap()
             );
@@ -305,9 +317,10 @@ impl GameRenderer {
     }
 
     pub fn bind_vertex_buffer(&self, buffer: &Buffer) {
+        let inner = &self.0;
         unsafe {
-            self.application.main_device().virtual_device().cmd_bind_vertex_buffers(
-                self.command_buffer,
+            inner.application.main_device().virtual_device().cmd_bind_vertex_buffers(
+                inner.command_buffer,
                 0,
                 slice::from_ref(&buffer.buffer),
                 slice::from_ref(&vk::DeviceSize::from(0u32))
@@ -316,24 +329,26 @@ impl GameRenderer {
     }
 
     pub fn draw(&self, vertices: u32) {
+        let inner = &self.0;
         unsafe {
-            self.application.main_device().virtual_device().cmd_draw(self.command_buffer, vertices, 4, 1, 0);
+            inner.application.main_device().virtual_device().cmd_draw(inner.command_buffer, vertices, 4, 1, 0);
         }
     }
 
     pub fn draw_indexed(&self, index_buffer: &Buffer) {
-        let device = self.application.main_device().virtual_device();
+        let inner = &self.0;
+        let device = inner.application.main_device().virtual_device();
         let indices = (index_buffer.alloc_info.size / mem::size_of::<u16>() as u64) as u32;
         unsafe {
-            device.cmd_bind_index_buffer(self.command_buffer, index_buffer.buffer, vk::DeviceSize::from(0u32),
+            device.cmd_bind_index_buffer(inner.command_buffer, index_buffer.buffer, vk::DeviceSize::from(0u32),
                 vk::IndexType::UINT16);
-            device.cmd_draw_indexed(self.command_buffer, indices, 1, 0, 0, 0);
+            device.cmd_draw_indexed(inner.command_buffer, indices, 1, 0, 0, 0);
         }
     }
 
     #[inline]
     pub fn find_pipeline(&self, pipeline_name: &str) -> Option<&RenderPipeline> {
-        self.pipelines.iter().find(|pipeline| pipeline.name == pipeline_name)
+        self.0.pipelines.iter().find(|pipeline| pipeline.name == pipeline_name)
     }
 
 }

@@ -3,6 +3,7 @@ pub mod screens;
 use glam::{Vec2, Vec3};
 use log::{debug, info};
 use screens::MainMenuScreen;
+#[cfg(feature = "debug_extensions")]
 use vesuvius_engine::debug::DebugExtension;
 use vesuvius_engine::render::GameRenderer;
 use vesuvius_engine::vesuvius_winit::dpi::PhysicalSize;

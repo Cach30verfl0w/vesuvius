@@ -62,7 +62,7 @@ impl Screen for MainMenuScreen {
             size_of::<f32>() as vk::DeviceSize,
         )
         .unwrap();
-        alpha_buffer.write([1.0]).unwrap();
+        alpha_buffer.write([1.0f32]).unwrap();
 
         let descriptor_set = DescriptorSet::allocate(&self.renderer, "draw", 0).unwrap();
         descriptor_set.write(0, &alpha_buffer);

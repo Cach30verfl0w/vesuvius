@@ -40,7 +40,7 @@ impl Buffer {
 
         let alloc_create_info = vk_mem_alloc::AllocationCreateInfo {
             usage: vk_mem_alloc::MemoryUsage::AUTO_PREFER_HOST,
-            flags: AllocationCreateFlags::HOST_ACCESS_SEQUENTIAL_WRITE,
+            flags: AllocationCreateFlags::HOST_ACCESS_RANDOM | AllocationCreateFlags::MAPPED,
             ..Default::default()
         };
 
@@ -66,19 +66,17 @@ impl Buffer {
     pub fn write<T>(&self, data: T) -> Result<()> {
         // Validate the size of the data
         let input_size = mem::size_of::<T>() as u64;
-        if self.alloc_info.size < input_size {
+        if self.size < input_size {
             panic!(
                 "Error while writing buffer => Input Size ({}) is bigger than Buffer Size ({})",
-                input_size, self.alloc_info.size
+                input_size, self.size
             );
         }
 
         // Map memory into pointer
         let allocator = *self.app.main_device().allocator();
         unsafe {
-            let memory_ptr = vk_mem_alloc::map_memory(allocator, self.alloc)?;
-            std::ptr::copy_nonoverlapping(&data as *const T, memory_ptr as *mut T, 1);
-            vk_mem_alloc::unmap_memory(allocator, self.alloc);
+            std::ptr::copy_nonoverlapping(&data as *const _, self.alloc_info.mapped_data.cast(), 1);
         }
         Ok(())
     }

@@ -1,13 +1,11 @@
-use render::GameRenderer;
+use crate::render::GameRenderer;
 
 pub struct DebugExtension {
-    renderer: GameRenderer
+    renderer: GameRenderer,
 }
 
 impl DebugExtension {
     pub fn new(renderer: GameRenderer) -> Self {
-        Self {
-            renderer
-        }
+        Self { renderer }
     }
 }

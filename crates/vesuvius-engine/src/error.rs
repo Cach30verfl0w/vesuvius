@@ -1,6 +1,6 @@
+use ash::{vk, LoadingError};
 use std::io;
 use std::string::FromUtf8Error;
-use ash::{LoadingError, vk};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -21,5 +21,5 @@ pub enum Error {
     CompilerCreation,
 
     #[error("Error while creating shader => {0}")]
-    ShaderCompiler(#[from] shaderc::Error)
+    ShaderCompiler(#[from] shaderc::Error),
 }

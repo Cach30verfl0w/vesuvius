@@ -1,8 +1,8 @@
-use std::mem;
-use ash::vk;
-use vk_mem_alloc::{Allocation, AllocationCreateFlags, AllocationInfo};
-use App;
+use crate::App;
 use crate::Result;
+use ash::vk;
+use std::mem;
+use vk_mem_alloc::{Allocation, AllocationCreateFlags, AllocationInfo};
 
 /// This structure represents an allocated buffer with device memory. This struct contains a device, the buffer handle
 /// itself, the allocation handle and the info about the allocation and allows a simple write function to write
@@ -13,12 +13,18 @@ pub struct Buffer {
     pub(crate) buffer: vk::Buffer,
     alloc: Allocation,
     pub(crate) alloc_info: AllocationInfo,
-    pub(crate) size: vk::DeviceSize
+    pub(crate) size: vk::DeviceSize,
 }
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        unsafe { vk_mem_alloc::destroy_buffer(*self.app.main_device().allocator(), self.buffer, self.alloc) };
+        unsafe {
+            vk_mem_alloc::destroy_buffer(
+                *self.app.main_device().allocator(),
+                self.buffer,
+                self.alloc,
+            )
+        };
     }
 }
 
@@ -39,7 +45,11 @@ impl Buffer {
         };
 
         let (buffer, alloc, alloc_info) = unsafe {
-            vk_mem_alloc::create_buffer(*app.main_device().allocator(), &buffer_create_info, &alloc_create_info)
+            vk_mem_alloc::create_buffer(
+                *app.main_device().allocator(),
+                &buffer_create_info,
+                &alloc_create_info,
+            )
         }?;
 
         Ok(Self {
@@ -47,7 +57,7 @@ impl Buffer {
             buffer,
             alloc,
             alloc_info,
-            size
+            size,
         })
     }
 
@@ -57,8 +67,10 @@ impl Buffer {
         // Validate the size of the data
         let input_size = mem::size_of::<T>() as u64;
         if self.alloc_info.size < input_size {
-            panic!("Error while writing buffer => Input Size ({}) is bigger than Buffer Size ({})", input_size,
-                   self.alloc_info.size);
+            panic!(
+                "Error while writing buffer => Input Size ({}) is bigger than Buffer Size ({})",
+                input_size, self.alloc_info.size
+            );
         }
 
         // Map memory into pointer

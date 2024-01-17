@@ -1,13 +1,13 @@
-use std::ffi::CStr;
-use std::fs;
-use std::path::PathBuf;
+use crate::error::Error;
+use crate::App;
+use crate::Result;
 use ash::vk;
 use serde::{Deserialize, Serialize};
 use shaderc::{CompileOptions, Compiler};
 use spirv_reflect::types::{ReflectDescriptorType, ReflectFormat};
-use App;
-use Result;
-use error::Error;
+use std::ffi::CStr;
+use std::fs;
+use std::path::PathBuf;
 
 /// This structure represents a shader module. This shader module is re-compilable, when the source
 /// code of the shader changes. The re-compilation features is used by the render pipeline while
@@ -27,14 +27,17 @@ pub(crate) struct ShaderModule {
     pub(crate) vulkan_shader_module: Option<vk::ShaderModule>,
 
     /// This field contains the kind of the shader (like fragment or vertex)
-    pub(crate) kind: ShaderKind
+    pub(crate) kind: ShaderKind,
 }
 
 impl Drop for ShaderModule {
     fn drop(&mut self) {
         unsafe {
             if let Some(shader_module) = self.vulkan_shader_module {
-                self.application.main_device().virtual_device().destroy_shader_module(shader_module, None);
+                self.application
+                    .main_device()
+                    .virtual_device()
+                    .destroy_shader_module(shader_module, None);
             }
         }
     }
@@ -51,16 +54,25 @@ impl From<&ShaderModule> for vk::PipelineShaderStageCreateInfo<'_> {
 }
 
 impl ShaderModule {
-
     pub(crate) fn compile(&mut self) -> Result<()> {
         let file_content = String::from_utf8(fs::read(&self.shader_source_path)?)?;
-        let file_name = self.shader_source_path.file_name().unwrap().to_str().unwrap();
+        let file_name = self
+            .shader_source_path
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap();
 
         // Compile Shader
         let compiler = Compiler::new().ok_or(Error::CompilerCreation)?;
         let options = CompileOptions::new().ok_or(Error::CompilerCreation)?;
-        let result = compiler.compile_into_spirv(&file_content, self.kind.into(), file_name,
-                                                 "main", Some(&options))?;
+        let result = compiler.compile_into_spirv(
+            &file_content,
+            self.kind.into(),
+            file_name,
+            "main",
+            Some(&options),
+        )?;
         self.shader_ir_code = result.as_binary_u8().to_vec();
 
         // Create shader
@@ -69,24 +81,31 @@ impl ShaderModule {
             unsafe { device.destroy_shader_module(old_shader_module, None) };
         }
 
-        let shader_module_create_info = vk::ShaderModuleCreateInfo::default()
-            .code(result.as_binary());
+        let shader_module_create_info =
+            vk::ShaderModuleCreateInfo::default().code(result.as_binary());
         let shader = unsafe { device.create_shader_module(&shader_module_create_info, None) }?;
         self.vulkan_shader_module = Some(shader);
         Ok(())
     }
 
-    pub(crate) fn reflect_input_attributes(&self) -> (Vec<vk::VertexInputAttributeDescription>,
-                                                      vk::VertexInputBindingDescription) {
-        let reflected_module = spirv_reflect::create_shader_module(self.shader_ir_code.as_slice()).unwrap();
+    pub(crate) fn reflect_input_attributes(
+        &self,
+    ) -> (
+        Vec<vk::VertexInputAttributeDescription>,
+        vk::VertexInputBindingDescription,
+    ) {
+        let reflected_module =
+            spirv_reflect::create_shader_module(self.shader_ir_code.as_slice()).unwrap();
         let mut input_attributes = Vec::new();
         let mut offset = 0;
 
         for input_variable in reflected_module.enumerate_input_variables(None).unwrap() {
-            input_attributes.push(vk::VertexInputAttributeDescription::default()
-                .location(input_variable.location)
-                .format(reflect_to_vulkan_format(input_variable.format))
-                .offset(offset));
+            input_attributes.push(
+                vk::VertexInputAttributeDescription::default()
+                    .location(input_variable.location)
+                    .format(reflect_to_vulkan_format(input_variable.format))
+                    .offset(offset),
+            );
             offset += reflect_format_to_offset(input_variable.format);
         }
 
@@ -94,19 +113,26 @@ impl ShaderModule {
             input_attributes,
             vk::VertexInputBindingDescription::default()
                 .stride(offset)
-                .input_rate(vk::VertexInputRate::VERTEX)
+                .input_rate(vk::VertexInputRate::VERTEX),
         )
     }
 
     pub(crate) fn create_descriptor_sets(&self) -> Vec<Vec<vk::DescriptorSetLayoutBinding>> {
-        let reflected_module = spirv_reflect::create_shader_module(self.shader_ir_code.as_slice()).unwrap();
+        let reflected_module =
+            spirv_reflect::create_shader_module(self.shader_ir_code.as_slice()).unwrap();
 
         let mut vulkan_descriptor_sets = Vec::new();
-        for descriptor_set in reflected_module.enumerate_descriptor_sets(Some("main")).unwrap().iter() {
+        for descriptor_set in reflected_module
+            .enumerate_descriptor_sets(Some("main"))
+            .unwrap()
+            .iter()
+        {
             let mut descriptor_set_bindings = Vec::new();
             for descriptor_binding in &descriptor_set.bindings {
                 let descriptor_set_layout_binding = vk::DescriptorSetLayoutBinding::default()
-                    .descriptor_type(reflect_to_vulkan_descriptor_type(descriptor_binding.descriptor_type))
+                    .descriptor_type(reflect_to_vulkan_descriptor_type(
+                        descriptor_binding.descriptor_type,
+                    ))
                     .binding(descriptor_binding.binding)
                     .descriptor_count(descriptor_binding.count)
                     .stage_flags(self.kind.into());
@@ -116,7 +142,6 @@ impl ShaderModule {
         }
         vulkan_descriptor_sets
     }
-
 }
 
 /// This enum represents all supported kinds of shader in the Vesuvius game engine. Currently only
@@ -126,7 +151,7 @@ pub(crate) enum ShaderKind {
     #[serde(rename = "fragment")]
     Fragment,
     #[serde(rename = "vertex")]
-    Vertex
+    Vertex,
 }
 
 /// Convert own shader kind into [shaderc::ShaderKind] of the shaderc crate
@@ -135,7 +160,7 @@ impl From<ShaderKind> for shaderc::ShaderKind {
     fn from(value: ShaderKind) -> Self {
         match value {
             ShaderKind::Vertex => Self::Vertex,
-            ShaderKind::Fragment => Self::Fragment
+            ShaderKind::Fragment => Self::Fragment,
         }
     }
 }
@@ -146,12 +171,14 @@ impl From<ShaderKind> for vk::ShaderStageFlags {
     fn from(value: ShaderKind) -> Self {
         match value {
             ShaderKind::Vertex => Self::VERTEX,
-            ShaderKind::Fragment => Self::FRAGMENT
+            ShaderKind::Fragment => Self::FRAGMENT,
         }
     }
 }
 
-const fn reflect_to_vulkan_descriptor_type(descriptor_type: ReflectDescriptorType) -> vk::DescriptorType {
+const fn reflect_to_vulkan_descriptor_type(
+    descriptor_type: ReflectDescriptorType,
+) -> vk::DescriptorType {
     match descriptor_type {
         ReflectDescriptorType::Undefined => panic!("Unable to convert undefined descriptor type"),
         ReflectDescriptorType::Sampler => vk::DescriptorType::SAMPLER,
@@ -165,7 +192,9 @@ const fn reflect_to_vulkan_descriptor_type(descriptor_type: ReflectDescriptorTyp
         ReflectDescriptorType::UniformBufferDynamic => vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
         ReflectDescriptorType::StorageBufferDynamic => vk::DescriptorType::STORAGE_BUFFER_DYNAMIC,
         ReflectDescriptorType::InputAttachment => vk::DescriptorType::INPUT_ATTACHMENT,
-        ReflectDescriptorType::AccelerationStructureNV => vk::DescriptorType::ACCELERATION_STRUCTURE_NV
+        ReflectDescriptorType::AccelerationStructureNV => {
+            vk::DescriptorType::ACCELERATION_STRUCTURE_NV
+        }
     }
 }
 
@@ -185,7 +214,7 @@ const fn reflect_to_vulkan_format(format: ReflectFormat) -> vk::Format {
         ReflectFormat::R32G32B32_SFLOAT => vk::Format::R32G32B32_SFLOAT,
         ReflectFormat::R32G32B32A32_UINT => vk::Format::R32G32B32A32_UINT,
         ReflectFormat::R32G32B32A32_SINT => vk::Format::R32G32B32A32_SINT,
-        ReflectFormat::R32G32B32A32_SFLOAT => vk::Format::R32G32B32A32_SFLOAT
+        ReflectFormat::R32G32B32A32_SFLOAT => vk::Format::R32G32B32A32_SFLOAT,
     }
 }
 

@@ -1,34 +1,22 @@
 #![feature(get_mut_unchecked)]
 
-pub mod error;
-pub mod device;
-pub mod render;
-pub mod screen;
 #[cfg(feature = "debug_extensions")]
 pub mod debug;
+pub mod device;
+pub mod error;
+pub mod render;
+pub mod screen;
 
-extern crate ash;
-extern crate thiserror;
-extern crate vk_mem_alloc;
-extern crate itertools;
-extern crate winit;
-extern crate raw_window_handle;
-extern crate serde;
-extern crate spirv_reflect;
-extern crate shaderc;
-extern crate log;
-extern crate egui;
-
-use std::mem::ManuallyDrop;
-use std::sync::Arc;
-use ash::{Entry, Instance, vk};
 use ash::vk::{MemoryHeapFlags, PhysicalDevice};
-use itertools::Itertools;
-use raw_window_handle::HasRawDisplayHandle;
-use winit::window::Window;
+use ash::{vk, Entry, Instance};
 use device::WrappedDevice;
 use error::Error;
+use itertools::Itertools;
+use raw_window_handle::HasRawDisplayHandle;
 use screen::Screen;
+use std::mem::ManuallyDrop;
+use std::sync::Arc;
+use winit::window::Window;
 
 /// Reexport egui if debug extensions enabled
 #[cfg(feature = "debug_extensions")]
@@ -58,7 +46,7 @@ struct AppInner {
     window: Window,
 
     /// The current screen (game state) of the application
-    current_screen: Option<Box<dyn Screen>>
+    current_screen: Option<Box<dyn Screen>>,
 }
 
 impl Drop for AppInner {
@@ -76,7 +64,6 @@ impl Drop for AppInner {
 pub struct App(Arc<AppInner>);
 
 impl App {
-
     /// This function creates a new instance of the engine application
     pub fn new(window: Window) -> Result<Self> {
         let entry = unsafe { Entry::load() }?;
@@ -84,7 +71,10 @@ impl App {
         // Add validation layer if enabled
         let mut layers = Vec::new();
         if let Ok(value) = std::env::var("VALIDATION_LAYER") {
-            if value.parse::<bool>().expect("Unable to wrap VALIDATE_LAYER env var into boolean") {
+            if value
+                .parse::<bool>()
+                .expect("Unable to wrap VALIDATE_LAYER env var into boolean")
+            {
                 layers.push(b"VK_LAYER_KHRONOS_validation\0".as_ptr().cast());
             }
         }
@@ -102,16 +92,20 @@ impl App {
 
         // Create device and application
         Ok(Self(Arc::new(AppInner {
-            main_device: ManuallyDrop::new(
-                WrappedDevice::new(instance.clone(), unsafe { instance.enumerate_physical_devices() }?
+            main_device: ManuallyDrop::new(WrappedDevice::new(
+                instance.clone(),
+                unsafe { instance.enumerate_physical_devices() }?
                     .into_iter()
-                    .sorted_by(|a, b| local_heap_size_of(&instance, a).cmp(&local_heap_size_of(&instance, b)))
-                    .next().unwrap())?
-            ),
+                    .sorted_by(|a, b| {
+                        local_heap_size_of(&instance, a).cmp(&local_heap_size_of(&instance, b))
+                    })
+                    .next()
+                    .unwrap(),
+            )?),
             entry,
             instance,
             window,
-            current_screen: None
+            current_screen: None,
         })))
     }
 
@@ -123,7 +117,11 @@ impl App {
         }
 
         inner_application.current_screen = Some(screen);
-        inner_application.current_screen.as_mut().unwrap().init(&immutable_clone);
+        inner_application
+            .current_screen
+            .as_mut()
+            .unwrap()
+            .init(&immutable_clone);
     }
 
     #[inline]
@@ -150,15 +148,16 @@ impl App {
     pub fn window(&self) -> &Window {
         &self.0.window
     }
-
 }
-
 
 #[inline]
 fn local_heap_size_of(instance: &Instance, physical_device: &PhysicalDevice) -> u64 {
     unsafe { instance.get_physical_device_memory_properties(*physical_device) }
-        .memory_heaps.iter()
-        .filter(|heap| (heap.flags & MemoryHeapFlags::DEVICE_LOCAL) == MemoryHeapFlags::DEVICE_LOCAL)
+        .memory_heaps
+        .iter()
+        .filter(|heap| {
+            (heap.flags & MemoryHeapFlags::DEVICE_LOCAL) == MemoryHeapFlags::DEVICE_LOCAL
+        })
         .map(|heap| heap.size)
         .sum()
 }

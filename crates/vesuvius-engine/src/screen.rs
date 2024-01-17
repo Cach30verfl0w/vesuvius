@@ -1,5 +1,5 @@
-use App;
-use render::GameRenderer;
+use crate::render::GameRenderer;
+use crate::App;
 
 pub trait Screen {
     fn init(&mut self, application: &App);

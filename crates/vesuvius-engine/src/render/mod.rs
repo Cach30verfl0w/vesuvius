@@ -1,11 +1,14 @@
 pub mod pipeline;
 pub mod buffer;
 
-use std::{mem, slice};
+use std::{fs, mem, slice};
+use std::collections::HashMap;
 use ash::extensions::khr::{Surface, Swapchain};
 use ash::vk;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use render::buffer::Buffer;
+use render::pipeline::config::PipelineConfiguration;
+
 use render::pipeline::RenderPipeline;
 use crate::App;
 use crate::Result;
@@ -15,20 +18,27 @@ pub struct GameRenderer {
     application: App,
     surface: vk::SurfaceKHR,
 
+    // Images
     images: Vec<vk::Image>,
     image_views: Vec<vk::ImageView>,
     current_image_index: u32,
 
+    // Swapchain
     swapchain_loader: Swapchain,
     swapchain: vk::SwapchainKHR,
 
+    // Command Pool and Buffer
     command_pool: vk::CommandPool,
     command_buffer: vk::CommandBuffer,
 
+    // Semaphores
     submit_semaphore: vk::Semaphore,
     present_semaphore: vk::Semaphore,
 
-    queue: vk::Queue
+    // Other things
+    queue: vk::Queue,
+    pipelines: Vec<RenderPipeline>,
+    descriptor_pool: Option<vk::DescriptorPool>
 }
 
 impl Drop for GameRenderer {
@@ -114,8 +124,65 @@ impl GameRenderer {
             command_buffer,
             current_image_index: 0,
             application,
-            surface
+            surface,
+            pipelines: Vec::new(),
+            descriptor_pool: None
         })
+    }
+
+    pub fn reload(&mut self) -> Result<()> {
+        // (Re)compile pipelines
+        for pipeline_configurations in fs::read_dir("assets/pipelines").expect("Unable to find pipeline configs") {
+            // Filter invalid configuration files
+            let config_file = pipeline_configurations.unwrap().path();
+            if !config_file.file_name().unwrap().to_str().unwrap().ends_with(".json") {
+                continue;
+            }
+
+            // Create pipeline or recompile it
+            let file_content = String::from_utf8(fs::read(&config_file)?)?;
+            let pipeline_config: PipelineConfiguration = serde_json::from_str(&file_content)
+                .expect("Unable to read pipeline configuration");
+            match self.pipelines.iter_mut().find(|pipeline| pipeline.name == pipeline_config.name) {
+                Some(pipeline) => pipeline.compile()?, // TODO: Reload only if changes are detected
+                None => {
+                    let mut pipeline = RenderPipeline::new(self.application.clone(), pipeline_config)?;
+                    pipeline.compile()?;
+                    self.pipelines.push(pipeline);
+                }
+            }
+        }
+
+        // (Re)create descriptor pool on reflection information of shaders in pipeline
+        let device = self.application.main_device().virtual_device();
+        if let Some(descriptor_pool) = self.descriptor_pool {
+            unsafe {
+                device.destroy_descriptor_pool(descriptor_pool, None);
+            }
+        }
+
+        let descriptor_pool_sizes = self.pipelines.iter()
+            .map(|pipeline| pipeline.get_descriptor_count())
+            .flatten()
+            .fold(HashMap::new(), |mut descriptor_sizes, (descriptor_type, count)| {
+                *descriptor_sizes.entry(descriptor_type).or_insert(0) += count;
+                descriptor_sizes
+            })
+            .iter()
+            .map(|(descriptor_type, count)| {
+                vk::DescriptorPoolSize::default()
+                    .descriptor_count(*count as u32)
+                    .ty(*descriptor_type)
+            })
+            .collect::<Vec<vk::DescriptorPoolSize>>();
+        let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::default()
+            .pool_sizes(descriptor_pool_sizes.as_slice())
+            .max_sets(1024);
+
+        self.descriptor_pool = Some(unsafe {
+            device.create_descriptor_pool(&descriptor_pool_create_info, None)
+        }?);
+        Ok(())
     }
 
     pub fn begin(&mut self) -> Result<()> {
@@ -262,6 +329,11 @@ impl GameRenderer {
                 vk::IndexType::UINT16);
             device.cmd_draw_indexed(self.command_buffer, indices, 1, 0, 0, 0);
         }
+    }
+
+    #[inline]
+    pub fn find_pipeline(&self, pipeline_name: &str) -> Option<&RenderPipeline> {
+        self.pipelines.iter().find(|pipeline| pipeline.name == pipeline_name)
     }
 
 }

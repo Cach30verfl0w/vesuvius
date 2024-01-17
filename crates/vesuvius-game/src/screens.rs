@@ -5,21 +5,16 @@ use Vertex;
 use vesuvius_engine::App;
 use vesuvius_engine::render::buffer::Buffer;
 use vesuvius_engine::render::GameRenderer;
-use vesuvius_engine::render::pipeline::RenderPipeline;
 use vesuvius_engine::screen::Screen;
 
 #[derive(Default)]
 pub struct MainMenuScreen {
-    pipeline: Option<RenderPipeline>,
     vertex_buffer: Option<Buffer>,
     index_buffer: Option<Buffer>
 }
 
 impl Screen for MainMenuScreen {
     fn init(&mut self, application: &App) {
-        let mut pipeline = RenderPipeline::new(application.clone(), "assets/pipelines/draw.json").unwrap();
-        pipeline.compile().unwrap();
-
         let vertex_buffer = Buffer::new(application.clone(), vk::BufferUsageFlags::VERTEX_BUFFER, size_of::<Vertex>() * 4)
             .unwrap();
         vertex_buffer.write([
@@ -40,13 +35,12 @@ impl Screen for MainMenuScreen {
             0u16
         ]).unwrap();
 
-        self.pipeline = Some(pipeline);
         self.vertex_buffer = Some(vertex_buffer);
         self.index_buffer = Some(index_buffer);
     }
 
     fn render(&self, renderer: &mut GameRenderer) {
-        renderer.bind_pipeline(self.pipeline.as_ref().unwrap());
+        renderer.bind_pipeline(renderer.find_pipeline("draw").unwrap());
         renderer.bind_vertex_buffer(self.vertex_buffer.as_ref().unwrap());
         renderer.draw_indexed(self.index_buffer.as_ref().unwrap());
     }

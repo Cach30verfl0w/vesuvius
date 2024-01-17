@@ -35,8 +35,10 @@ fn main() {
 
     // Create application
     let mut app = App::new(window).unwrap();
-    app.open_screen(Box::new(MainMenuScreen::default()));
     let mut renderer = GameRenderer::new(app.clone()).unwrap();
+    renderer.reload().unwrap();
+
+    app.open_screen(Box::new(MainMenuScreen::default()));
     info!("Successfully created application and renderer");
 
     // Game Loop

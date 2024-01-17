@@ -1,10 +1,11 @@
+use std::collections::HashMap;
 use std::ffi::CStr;
 use std::fs;
 use std::path::PathBuf;
 use ash::vk;
 use serde::{Deserialize, Serialize};
 use shaderc::{CompileOptions, Compiler};
-use spirv_reflect::types::ReflectFormat;
+use spirv_reflect::types::{ReflectDescriptorType, ReflectFormat};
 use App;
 use Result;
 use error::Error;
@@ -78,11 +79,10 @@ impl ShaderModule {
 
     pub(crate) fn reflect_input_attributes(&self) -> (Vec<vk::VertexInputAttributeDescription>,
                                                       vk::VertexInputBindingDescription) {
-        let reflected_module = spirv_reflect::create_shader_module(self.shader_ir_code.as_slice())
-            .unwrap();
-
+        let reflected_module = spirv_reflect::create_shader_module(self.shader_ir_code.as_slice()).unwrap();
         let mut input_attributes = Vec::new();
         let mut offset = 0;
+
         for input_variable in reflected_module.enumerate_input_variables(None).unwrap() {
             input_attributes.push(vk::VertexInputAttributeDescription::default()
                 .location(input_variable.location)
@@ -90,12 +90,44 @@ impl ShaderModule {
                 .offset(offset));
             offset += reflect_format_to_offset(input_variable.format);
         }
+
         (
             input_attributes,
             vk::VertexInputBindingDescription::default()
                 .stride(offset)
                 .input_rate(vk::VertexInputRate::VERTEX)
         )
+    }
+
+    pub(crate) fn create_descriptor_sets(&self) -> Vec<Vec<vk::DescriptorSetLayoutBinding>> {
+        let reflected_module = spirv_reflect::create_shader_module(self.shader_ir_code.as_slice()).unwrap();
+
+        let mut vulkan_descriptor_sets = Vec::new();
+        for descriptor_set in reflected_module.enumerate_descriptor_sets(Some("main")).unwrap().iter() {
+            let mut descriptor_set_bindings = Vec::new();
+            for descriptor_binding in &descriptor_set.bindings {
+                let descriptor_set_layout_binding = vk::DescriptorSetLayoutBinding::default()
+                    .descriptor_type(reflect_to_vulkan_descriptor_type(descriptor_binding.descriptor_type))
+                    .binding(descriptor_binding.binding)
+                    .descriptor_count(descriptor_binding.count)
+                    .stage_flags(self.kind.into());
+                descriptor_set_bindings.push(descriptor_set_layout_binding);
+            }
+            vulkan_descriptor_sets.push(descriptor_set_bindings);
+        }
+        vulkan_descriptor_sets
+    }
+
+    #[inline]
+    pub(crate) fn get_descriptor_count(&self) -> HashMap<vk::DescriptorType, usize> {
+        spirv_reflect::create_shader_module(self.shader_ir_code.as_slice()).unwrap()
+            .enumerate_descriptor_sets(None).unwrap().iter()
+            .flat_map(|descriptor_set| &descriptor_set.bindings)
+            .fold(HashMap::new(), |mut descriptor_counts, descriptor_binding| {
+                *descriptor_counts.entry(reflect_to_vulkan_descriptor_type(descriptor_binding.descriptor_type))
+                    .or_insert(0) += 1;
+                descriptor_counts
+            })
     }
 
 }
@@ -129,6 +161,24 @@ impl From<ShaderKind> for vk::ShaderStageFlags {
             ShaderKind::Vertex => Self::VERTEX,
             ShaderKind::Fragment => Self::FRAGMENT
         }
+    }
+}
+
+const fn reflect_to_vulkan_descriptor_type(descriptor_type: ReflectDescriptorType) -> vk::DescriptorType {
+    match descriptor_type {
+        ReflectDescriptorType::Undefined => panic!("Unable to convert undefined descriptor type"),
+        ReflectDescriptorType::Sampler => vk::DescriptorType::SAMPLER,
+        ReflectDescriptorType::CombinedImageSampler => vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+        ReflectDescriptorType::SampledImage => vk::DescriptorType::SAMPLED_IMAGE,
+        ReflectDescriptorType::StorageImage => vk::DescriptorType::STORAGE_IMAGE,
+        ReflectDescriptorType::UniformTexelBuffer => vk::DescriptorType::UNIFORM_TEXEL_BUFFER,
+        ReflectDescriptorType::StorageTexelBuffer => vk::DescriptorType::STORAGE_TEXEL_BUFFER,
+        ReflectDescriptorType::UniformBuffer => vk::DescriptorType::UNIFORM_BUFFER,
+        ReflectDescriptorType::StorageBuffer => vk::DescriptorType::STORAGE_BUFFER,
+        ReflectDescriptorType::UniformBufferDynamic => vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+        ReflectDescriptorType::StorageBufferDynamic => vk::DescriptorType::STORAGE_BUFFER_DYNAMIC,
+        ReflectDescriptorType::InputAttachment => vk::DescriptorType::INPUT_ATTACHMENT,
+        ReflectDescriptorType::AccelerationStructureNV => vk::DescriptorType::ACCELERATION_STRUCTURE_NV
     }
 }
 

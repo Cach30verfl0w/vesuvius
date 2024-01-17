@@ -1,10 +1,12 @@
 pub mod config;
 pub mod shader;
 
-use std::{fs, slice};
-use std::path::{Path, PathBuf};
+use std::{slice};
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::str::FromStr;
 use ash::vk;
+use ash::vk::DescriptorSetLayout;
 use log::info;
 use render::pipeline::config::PipelineConfiguration;
 use render::pipeline::shader::{ShaderKind, ShaderModule};
@@ -19,13 +21,20 @@ pub struct RenderPipeline {
     shader_modules: Vec<ShaderModule>,
     application: App,
     vulkan_pipeline_layout: Option<vk::PipelineLayout>,
+    descriptor_set_layouts: Option<Vec<DescriptorSetLayout>>,
     pub(crate) vulkan_pipeline: Option<vk::Pipeline>,
-    name: String
+    pub(crate) name: String
 }
 
 impl Drop for RenderPipeline {
     fn drop(&mut self) {
         let device = self.application.main_device().virtual_device();
+        if let Some(descriptor_set_layouts) = self.descriptor_set_layouts.as_ref() {
+            for descriptor_set_layout in descriptor_set_layouts {
+                unsafe { device.destroy_descriptor_set_layout(*descriptor_set_layout, None) };
+            }
+        }
+
         if let Some(vulkan_pipeline_layout) = self.vulkan_pipeline_layout {
             unsafe { device.destroy_pipeline_layout(vulkan_pipeline_layout, None) };
         }
@@ -38,21 +47,10 @@ impl Drop for RenderPipeline {
 
 impl RenderPipeline {
 
-    pub fn new<P: AsRef<Path>>(application: App, path: P) -> Result<Self> {
-        let path = path.as_ref();
-        if !path.is_file() {
-            panic!("Unable to create render pipeline => The path '{}' doesn't points to a file",
-                   path.to_str().unwrap());
-        }
-
-        // Read configuration from file
-        let file_content = String::from_utf8(fs::read(path)?)?;
-        let pipeline_configuration = serde_json::from_str::<PipelineConfiguration>(&file_content)
-            .expect("Illegal pipeline configuration file specified");
-
+    pub(crate) fn new(application: App, pipeline_config: PipelineConfiguration) -> Result<Self> {
         // Create shader from file
         let mut shader_modules = Vec::new();
-        for shader_configuration in pipeline_configuration.shader.iter() {
+        for shader_configuration in pipeline_config.shader.iter() {
             // Get shader path and validate
             let shader_path = PathBuf::from_str(&shader_configuration.resource).unwrap();
             if !shader_path.exists() || !shader_path.is_file() {
@@ -69,15 +67,15 @@ impl RenderPipeline {
                 shader_ir_code: Vec::new()
             })
         }
-        info!("Internally created '{}' render pipeline with {} shaders",
-            pipeline_configuration.name, shader_modules.len());
+        info!("Internally created '{}' render pipeline with {} shaders", pipeline_config.name, shader_modules.len());
 
         Ok(Self {
             application,
             shader_modules,
+            descriptor_set_layouts: None,
             vulkan_pipeline_layout: None,
             vulkan_pipeline: None,
-            name: pipeline_configuration.name
+            name: pipeline_config.name
         })
     }
 
@@ -125,8 +123,21 @@ impl RenderPipeline {
         let pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo::default()
             .attachments(slice::from_ref(&pipeline_color_blend_attachment_info));
 
-        // Create pipeline layout
-        let layout_create_info = vk::PipelineLayoutCreateInfo::default();
+        // Create descriptor sets and pipeline layout
+        let mut descriptor_sets = Vec::new();
+        for shader in self.shader_modules.iter() {
+            for descriptor_set in shader.create_descriptor_sets() {
+                let descriptor_set_layout_info = vk::DescriptorSetLayoutCreateInfo::default()
+                    .bindings(descriptor_set.as_slice());
+                let descriptor_set_layout = unsafe {
+                    device.create_descriptor_set_layout(&descriptor_set_layout_info, None)
+                }?;
+                descriptor_sets.push(descriptor_set_layout);
+            }
+        }
+
+        let layout_create_info = vk::PipelineLayoutCreateInfo::default()
+            .set_layouts(descriptor_sets.as_slice());
         let layout = unsafe { device.create_pipeline_layout(&layout_create_info, None) }?;
 
         // Create pipeline with recompiled shader modules
@@ -165,6 +176,12 @@ impl RenderPipeline {
             .layout(layout);
 
         // Destroy old handles in memory
+        if let Some(descriptor_set_layouts) = self.descriptor_set_layouts.as_ref() {
+            for descriptor_set_layout in descriptor_set_layouts {
+                unsafe { device.destroy_descriptor_set_layout(*descriptor_set_layout, None) };
+            }
+        }
+
         if let Some(old_pipeline) = self.vulkan_pipeline {
             unsafe { device.destroy_pipeline(old_pipeline, None) };
         }
@@ -175,6 +192,7 @@ impl RenderPipeline {
 
 
         // Replace old handles with new handles
+        self.descriptor_set_layouts = Some(descriptor_sets);
         self.vulkan_pipeline_layout = Some(layout);
         self.vulkan_pipeline = Some(unsafe {
             device.create_graphics_pipelines(
@@ -184,6 +202,16 @@ impl RenderPipeline {
             )
         }.unwrap()[0]);
         Ok(())
+    }
+
+    #[inline]
+    pub fn get_descriptor_count(&self) -> HashMap<vk::DescriptorType, usize> {
+        self.shader_modules.iter()
+            .flat_map(|module| module.get_descriptor_count().into_iter())
+            .fold(HashMap::new(), |mut descriptor_sizes, (descriptor_type, count)| {
+                *descriptor_sizes.entry(descriptor_type).or_insert(0) += count;
+                descriptor_sizes
+            })
     }
 
 }

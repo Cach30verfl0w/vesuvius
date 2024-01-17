@@ -12,7 +12,8 @@ pub struct Buffer {
     app: App,
     pub(crate) buffer: vk::Buffer,
     alloc: Allocation,
-    pub(crate) alloc_info: AllocationInfo
+    pub(crate) alloc_info: AllocationInfo,
+    pub(crate) size: vk::DeviceSize
 }
 
 impl Drop for Buffer {
@@ -24,7 +25,7 @@ impl Drop for Buffer {
 impl Buffer {
     /// This function creates a new buffer with the specified size or the specified usage. This buffer is created with
     /// the vk_mem_alloc crate.
-    pub fn new(app: App, usage: vk::BufferUsageFlags, size: usize) -> Result<Self> {
+    pub fn new(app: App, usage: vk::BufferUsageFlags, size: vk::DeviceSize) -> Result<Self> {
         let buffer_create_info = vk::BufferCreateInfo {
             usage,
             size: size as u64,
@@ -45,7 +46,8 @@ impl Buffer {
             app,
             buffer,
             alloc,
-            alloc_info
+            alloc_info,
+            size
         })
     }
 

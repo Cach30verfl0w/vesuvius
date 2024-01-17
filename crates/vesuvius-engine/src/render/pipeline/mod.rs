@@ -2,12 +2,12 @@ pub mod config;
 pub mod shader;
 
 use std::{slice};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 use ash::vk;
-use ash::vk::DescriptorSetLayout;
 use log::info;
+use render::buffer::Buffer;
+use render::GameRenderer;
 use render::pipeline::config::PipelineConfiguration;
 use render::pipeline::shader::{ShaderKind, ShaderModule};
 use crate::App;
@@ -20,8 +20,8 @@ use crate::Result;
 pub struct RenderPipeline {
     shader_modules: Vec<ShaderModule>,
     application: App,
-    vulkan_pipeline_layout: Option<vk::PipelineLayout>,
-    descriptor_set_layouts: Option<Vec<DescriptorSetLayout>>,
+    pub(crate) vulkan_pipeline_layout: Option<vk::PipelineLayout>,
+    descriptor_set_layouts: Option<Vec<(vk::DescriptorSetLayout, Vec<vk::DescriptorType>)>>,
     pub(crate) vulkan_pipeline: Option<vk::Pipeline>,
     pub(crate) name: String
 }
@@ -31,7 +31,7 @@ impl Drop for RenderPipeline {
         let device = self.application.main_device().virtual_device();
         if let Some(descriptor_set_layouts) = self.descriptor_set_layouts.as_ref() {
             for descriptor_set_layout in descriptor_set_layouts {
-                unsafe { device.destroy_descriptor_set_layout(*descriptor_set_layout, None) };
+                unsafe { device.destroy_descriptor_set_layout(descriptor_set_layout.0, None) };
             }
         }
 
@@ -132,12 +132,16 @@ impl RenderPipeline {
                 let descriptor_set_layout = unsafe {
                     device.create_descriptor_set_layout(&descriptor_set_layout_info, None)
                 }?;
-                descriptor_sets.push(descriptor_set_layout);
+                descriptor_sets.push((
+                    descriptor_set_layout,
+                    descriptor_set.iter().map(|desc| desc.descriptor_type).collect()
+                ));
             }
         }
 
+        let raw_descriptor_sets = descriptor_sets.iter().map(|value| value.0).collect::<Vec<_>>();
         let layout_create_info = vk::PipelineLayoutCreateInfo::default()
-            .set_layouts(descriptor_sets.as_slice());
+            .set_layouts(raw_descriptor_sets.as_slice());
         let layout = unsafe { device.create_pipeline_layout(&layout_create_info, None) }?;
 
         // Create pipeline with recompiled shader modules
@@ -178,7 +182,7 @@ impl RenderPipeline {
         // Destroy old handles in memory
         if let Some(descriptor_set_layouts) = self.descriptor_set_layouts.as_ref() {
             for descriptor_set_layout in descriptor_set_layouts {
-                unsafe { device.destroy_descriptor_set_layout(*descriptor_set_layout, None) };
+                unsafe { device.destroy_descriptor_set_layout(descriptor_set_layout.0, None) };
             }
         }
 
@@ -204,14 +208,62 @@ impl RenderPipeline {
         Ok(())
     }
 
-    #[inline]
-    pub fn get_descriptor_count(&self) -> HashMap<vk::DescriptorType, usize> {
-        self.shader_modules.iter()
-            .flat_map(|module| module.get_descriptor_count().into_iter())
-            .fold(HashMap::new(), |mut descriptor_sizes, (descriptor_type, count)| {
-                *descriptor_sizes.entry(descriptor_type).or_insert(0) += count;
-                descriptor_sizes
-            })
+}
+
+#[derive(Clone)]
+pub struct DescriptorSet {
+    pub(crate) vk_descriptor_set: vk::DescriptorSet,
+    renderer: GameRenderer,
+    binding_types: Vec<vk::DescriptorType>
+}
+
+impl Drop for DescriptorSet {
+    fn drop(&mut self) {
+        unsafe {
+            self.renderer.0.application.main_device().virtual_device().free_descriptor_sets(
+                self.renderer.0.descriptor_pool,
+                slice::from_ref(&self.vk_descriptor_set)
+            ).expect("Unable to free descriptor set");
+        }
+    }
+}
+
+impl DescriptorSet {
+
+    pub fn allocate(renderer: &GameRenderer, pipeline: &str, set_index: usize) -> Result<Self> {
+        let found_pipeline = renderer.find_pipeline(pipeline).expect(&format!("Invalid pipeline name '{}'", pipeline));
+        let (descriptor_set, binding_types) = found_pipeline.descriptor_set_layouts.as_ref().unwrap().get(set_index)
+            .expect(&format!("Unable to find descriptor set by index '{}' in pipeline '{}'", set_index, pipeline));
+
+        let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::default()
+            .descriptor_pool(renderer.0.descriptor_pool)
+            .set_layouts(slice::from_ref(descriptor_set));
+        let device = renderer.0.application.main_device();
+        let descriptor_set = unsafe {
+            device.virtual_device().allocate_descriptor_sets(&descriptor_set_allocate_info)
+        }?[0];
+
+        Ok(Self {
+            vk_descriptor_set: descriptor_set,
+            renderer: renderer.clone(),
+            binding_types: binding_types.clone()
+        })
+    }
+
+    pub fn write(&self, binding: usize, buffer: &Buffer) {
+        let descriptor_buffer_info = vk::DescriptorBufferInfo::default()
+            .buffer(buffer.buffer)
+            .range(vk::WHOLE_SIZE);
+        let write_descriptor_set = vk::WriteDescriptorSet::default()
+            .descriptor_count(1)
+            .descriptor_type(self.binding_types[binding])
+            .buffer_info(slice::from_ref(&descriptor_buffer_info))
+            .dst_set(self.vk_descriptor_set)
+            .dst_binding(binding as u32);
+        unsafe {
+            self.renderer.0.application.main_device().virtual_device()
+                .update_descriptor_sets(slice::from_ref(&write_descriptor_set), &[]);
+        }
     }
 
 }

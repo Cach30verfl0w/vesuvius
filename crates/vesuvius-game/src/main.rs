@@ -39,7 +39,13 @@ fn main() {
     let mut renderer = GameRenderer::new(app.clone()).unwrap();
     renderer.reload().unwrap();
 
-    app.open_screen(Box::new(MainMenuScreen::default()));
+    app.open_screen(Box::new(MainMenuScreen {
+        vertex_buffer: None,
+        index_buffer: None,
+        alpha_buffer: None,
+        renderer: renderer.clone(),
+        descriptor_set: None,
+    }));
     info!("Successfully created application and renderer");
 
     #[cfg(feature = "debug_extensions")]

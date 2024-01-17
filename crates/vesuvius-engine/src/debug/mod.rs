@@ -7,7 +7,7 @@ pub struct DebugExtension {
 impl DebugExtension {
     pub fn new(renderer: GameRenderer) -> Self {
         Self {
-            renderer: renderer
+            renderer
         }
     }
 }

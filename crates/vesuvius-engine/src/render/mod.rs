@@ -2,15 +2,15 @@ pub mod pipeline;
 pub mod buffer;
 
 use std::{fs, mem, slice};
-use std::collections::HashMap;
 use std::sync::Arc;
 use ash::extensions::khr::{Surface, Swapchain};
 use ash::vk;
+use ash::vk::DescriptorType;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use render::buffer::Buffer;
 use render::pipeline::config::PipelineConfiguration;
 
-use render::pipeline::RenderPipeline;
+use render::pipeline::{DescriptorSet, RenderPipeline};
 use crate::App;
 use crate::Result;
 
@@ -38,7 +38,7 @@ struct GameRendererInner {
     // Other things
     queue: vk::Queue,
     pipelines: Vec<RenderPipeline>,
-    descriptor_pool: Option<vk::DescriptorPool>
+    descriptor_pool: vk::DescriptorPool
 }
 
 impl Drop for GameRendererInner {
@@ -46,6 +46,7 @@ impl Drop for GameRendererInner {
         let device = self.application.main_device().virtual_device();
         let surface_loader = Surface::new(self.application.entry(), self.application.instance());
         unsafe {
+            device.destroy_descriptor_pool(self.descriptor_pool, None);
             device.destroy_semaphore(self.submit_semaphore, None);
             device.destroy_semaphore(self.present_semaphore, None);
             for image_view in self.image_views.iter() {
@@ -72,7 +73,6 @@ impl GameRenderer {
             ash_window::create_surface(application.entry(), application.instance(), window.raw_display_handle(),
                                        window.raw_window_handle(), None)
         }?;
-
 
         // Create swapchain
         let swapchain_loader = Swapchain::new(application.instance(), device);
@@ -114,6 +114,17 @@ impl GameRenderer {
             .command_buffer_count(1);
         let command_buffer = unsafe { device.allocate_command_buffers(&command_buffer_alloc_info) }?[0];
 
+        // Create descriptor pool
+        // TODO
+        let descriptor_pool_sizes = [
+            vk::DescriptorPoolSize::default().descriptor_count(1).ty(DescriptorType::UNIFORM_BUFFER)
+        ];
+        let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::default()
+            .pool_sizes(&descriptor_pool_sizes)
+            .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
+            .max_sets(1024);
+        let descriptor_pool = unsafe { device.create_descriptor_pool(&descriptor_pool_create_info, None) }?;
+
         // Return game renderer to caller
         Ok(Self(Arc::new(GameRendererInner {
             submit_semaphore: unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?,
@@ -129,7 +140,7 @@ impl GameRenderer {
             application,
             surface,
             pipelines: Vec::new(),
-            descriptor_pool: None
+            descriptor_pool
         })))
     }
 
@@ -157,36 +168,6 @@ impl GameRenderer {
                 }
             }
         }
-
-        // (Re)create descriptor pool on reflection information of shaders in pipeline
-        let device = inner.application.main_device().virtual_device();
-        if let Some(descriptor_pool) = inner.descriptor_pool {
-            unsafe {
-                device.destroy_descriptor_pool(descriptor_pool, None);
-            }
-        }
-
-        let descriptor_pool_sizes = inner.pipelines.iter()
-            .map(|pipeline| pipeline.get_descriptor_count())
-            .flatten()
-            .fold(HashMap::new(), |mut descriptor_sizes, (descriptor_type, count)| {
-                *descriptor_sizes.entry(descriptor_type).or_insert(0) += count;
-                descriptor_sizes
-            })
-            .iter()
-            .map(|(descriptor_type, count)| {
-                vk::DescriptorPoolSize::default()
-                    .descriptor_count(*count as u32)
-                    .ty(*descriptor_type)
-            })
-            .collect::<Vec<vk::DescriptorPoolSize>>();
-        let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::default()
-            .pool_sizes(descriptor_pool_sizes.as_slice())
-            .max_sets(1024);
-
-        inner.descriptor_pool = Some(unsafe {
-            device.create_descriptor_pool(&descriptor_pool_create_info, None)
-        }?);
 
         Ok(())
     }
@@ -305,7 +286,7 @@ impl GameRenderer {
         Ok(())
     }
 
-    pub fn bind_pipeline(&self, pipeline: &RenderPipeline) {
+    pub fn bind_pipeline(&self, pipeline: &RenderPipeline, descriptor_sets: &[DescriptorSet]) {
         let inner = &self.0;
         unsafe {
             inner.application.main_device().virtual_device().cmd_bind_pipeline(
@@ -313,6 +294,20 @@ impl GameRenderer {
                 vk::PipelineBindPoint::GRAPHICS,
                 pipeline.vulkan_pipeline.unwrap()
             );
+        }
+
+        if descriptor_sets.len() > 0 {
+            let raw_descriptor_sets = descriptor_sets.iter().map(|value| value.vk_descriptor_set).collect::<Vec<_>>();
+            unsafe {
+                inner.application.main_device().virtual_device().cmd_bind_descriptor_sets(
+                    inner.command_buffer,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    pipeline.vulkan_pipeline_layout.unwrap(),
+                    0,
+                    raw_descriptor_sets.as_slice(),
+                    &[]
+                );
+            }
         }
     }
 

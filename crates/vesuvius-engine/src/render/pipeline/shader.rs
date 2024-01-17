@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::ffi::CStr;
 use std::fs;
 use std::path::PathBuf;
@@ -116,18 +115,6 @@ impl ShaderModule {
             vulkan_descriptor_sets.push(descriptor_set_bindings);
         }
         vulkan_descriptor_sets
-    }
-
-    #[inline]
-    pub(crate) fn get_descriptor_count(&self) -> HashMap<vk::DescriptorType, usize> {
-        spirv_reflect::create_shader_module(self.shader_ir_code.as_slice()).unwrap()
-            .enumerate_descriptor_sets(None).unwrap().iter()
-            .flat_map(|descriptor_set| &descriptor_set.bindings)
-            .fold(HashMap::new(), |mut descriptor_counts, descriptor_binding| {
-                *descriptor_counts.entry(reflect_to_vulkan_descriptor_type(descriptor_binding.descriptor_type))
-                    .or_insert(0) += 1;
-                descriptor_counts
-            })
     }
 
 }

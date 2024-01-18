@@ -14,8 +14,7 @@ use vesuvius_engine::App;
 #[repr(C)]
 pub struct Vertex {
     position: Vec2,
-    color: Option<Vec3>,
-    uv: Option<Vec2>,
+    color: Vec3,
 }
 
 fn main() {
@@ -45,6 +44,7 @@ fn main() {
         vertex_buffer: None,
         index_buffer: None,
         image: None,
+        descriptor_set: None,
     }));
     log::info!("Successfully created application and renderer");
 

@@ -1,13 +1,13 @@
 {
-  "name": "image",
+  "name": "draw",
   "shader": [
     {
       "kind": "vertex",
-      "resource": "assets/shader/image.vertex.glsl"
+      "resource": "assets/shader/draw.vertex.glsl"
     },
     {
       "kind": "fragment",
-      "resource": "assets/shader/image.fragment.glsl"
+      "resource": "assets/shader/draw.fragment.glsl"
     }
   ]
 }

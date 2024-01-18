@@ -2,6 +2,7 @@ pub mod config;
 pub mod shader;
 
 use crate::render::buffer::Buffer;
+use crate::render::image::Image;
 use crate::render::pipeline::config::PipelineConfiguration;
 use crate::render::pipeline::shader::{ShaderKind, ShaderModule};
 use crate::render::GameRenderer;
@@ -287,19 +288,52 @@ impl DescriptorSet {
             binding_types: binding_types.clone(),
         })
     }
+}
 
-    pub fn write(&self, binding: usize, buffer: &Buffer) {
+pub trait WriteDescriptorSet {
+    fn write_to_set(&self, descriptor_set: &DescriptorSet, binding: u32);
+}
+
+impl WriteDescriptorSet for Buffer {
+    fn write_to_set(&self, descriptor_set: &DescriptorSet, binding: u32) {
         let descriptor_buffer_info = vk::DescriptorBufferInfo::default()
-            .buffer(buffer.buffer)
+            .buffer(self.buffer)
             .range(vk::WHOLE_SIZE);
         let write_descriptor_set = vk::WriteDescriptorSet::default()
             .descriptor_count(1)
-            .descriptor_type(self.binding_types[binding])
+            .descriptor_type(descriptor_set.binding_types[binding as usize])
             .buffer_info(slice::from_ref(&descriptor_buffer_info))
-            .dst_set(self.vk_descriptor_set)
-            .dst_binding(binding as u32);
+            .dst_set(descriptor_set.vk_descriptor_set)
+            .dst_binding(binding);
+
         unsafe {
-            self.renderer
+            descriptor_set
+                .renderer
+                .0
+                .application
+                .main_device()
+                .virtual_device()
+                .update_descriptor_sets(slice::from_ref(&write_descriptor_set), &[]);
+        }
+    }
+}
+
+impl WriteDescriptorSet for Image {
+    fn write_to_set(&self, descriptor_set: &DescriptorSet, binding: u32) {
+        let descriptor_image_info = vk::DescriptorImageInfo::default()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(self.image_view)
+            .sampler(self.sampler);
+        let write_descriptor_set = vk::WriteDescriptorSet::default()
+            .dst_set(descriptor_set.vk_descriptor_set)
+            .dst_binding(binding)
+            .dst_array_element(0)
+            .descriptor_type(descriptor_set.binding_types[binding as usize])
+            .image_info(slice::from_ref(&descriptor_image_info));
+
+        unsafe {
+            descriptor_set
+                .renderer
                 .0
                 .application
                 .main_device()

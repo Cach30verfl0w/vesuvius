@@ -9,7 +9,7 @@ pub mod error;
 pub mod render;
 pub mod screen;
 
-use ash::vk::{MemoryHeapFlags, PhysicalDevice};
+use ash::vk::{CommandBuffer, MemoryHeapFlags, PhysicalDevice};
 use ash::{vk, Entry, Instance};
 use device::WrappedDevice;
 use error::Error;
@@ -17,6 +17,7 @@ use itertools::Itertools;
 use raw_window_handle::HasRawDisplayHandle;
 use screen::Screen;
 use std::mem::ManuallyDrop;
+use std::slice;
 use std::sync::Arc;
 use winit::window::Window;
 
@@ -127,6 +128,50 @@ impl App {
             .as_mut()
             .unwrap()
             .init(&immutable_clone);
+    }
+
+    pub fn upload_single_time_command_buffer<F: FnOnce(CommandBuffer)>(
+        &self,
+        operation: F,
+    ) -> Result<()> {
+        let device = self.main_device().virtual_device();
+
+        // Allocate command buffer
+        let command_pool_create_info = vk::CommandPoolCreateInfo::default().queue_family_index(0);
+        let command_pool = unsafe { device.create_command_pool(&command_pool_create_info, None) }?;
+        let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::default()
+            .command_pool(command_pool)
+            .command_buffer_count(1);
+        let command_buffer =
+            unsafe { device.allocate_command_buffers(&command_buffer_allocate_info) }?[0];
+
+        // Create fence
+        let submit_fence = unsafe { device.create_fence(&vk::FenceCreateInfo::default(), None) }?;
+
+        // Begin and perform operation
+        unsafe {
+            device.begin_command_buffer(command_buffer, &vk::CommandBufferBeginInfo::default())
+        }?;
+        operation(command_buffer);
+
+        // End, submit and free
+        unsafe {
+            device.end_command_buffer(command_buffer)?;
+
+            let submit_info =
+                vk::SubmitInfo::default().command_buffers(slice::from_ref(&command_buffer));
+            device.queue_submit(
+                *self.main_device().queue(),
+                slice::from_ref(&submit_info),
+                submit_fence,
+            )?;
+            device.wait_for_fences(slice::from_ref(&submit_fence), true, u64::MAX)?;
+
+            device.destroy_fence(submit_fence, None);
+            device.free_command_buffers(command_pool, slice::from_ref(&command_buffer));
+            device.destroy_command_pool(command_pool, None);
+        }
+        Ok(())
     }
 
     #[inline]

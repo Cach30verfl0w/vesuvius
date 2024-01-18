@@ -1,5 +1,4 @@
 use ash::{vk, LoadingError};
-use png::DecodingError;
 use std::io;
 use std::string::FromUtf8Error;
 use thiserror::Error;
@@ -25,5 +24,5 @@ pub enum Error {
     ShaderCompiler(#[from] shaderc::Error),
 
     #[error("Error while decoding image resource => {0}")]
-    PngDecoding(#[from] DecodingError),
+    Image(#[from] image::ImageError),
 }

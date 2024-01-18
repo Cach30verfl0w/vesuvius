@@ -37,7 +37,6 @@ struct GameRendererInner {
     present_semaphore: vk::Semaphore,
 
     // Other things
-    queue: vk::Queue,
     pipelines: Vec<RenderPipeline>,
     descriptor_pool: vk::DescriptorPool,
 }
@@ -156,7 +155,6 @@ impl GameRenderer {
             present_semaphore: unsafe {
                 device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
             }?,
-            queue: unsafe { device.get_device_queue(0, 0) },
             swapchain_loader,
             swapchain,
             images,
@@ -243,29 +241,12 @@ impl GameRenderer {
                 .begin_command_buffer(inner.command_buffer, &vk::CommandBufferBeginInfo::default())
         }?;
 
-        let image_memory_barrier = vk::ImageMemoryBarrier::default()
-            .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-            .old_layout(vk::ImageLayout::UNDEFINED)
-            .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .image(inner.images[inner.current_image_index as usize])
-            .subresource_range(
-                vk::ImageSubresourceRange::default()
-                    .aspect_mask(vk::ImageAspectFlags::COLOR)
-                    .level_count(1)
-                    .layer_count(1),
-            );
-
-        unsafe {
-            device.cmd_pipeline_barrier(
-                inner.command_buffer,
-                vk::PipelineStageFlags::TOP_OF_PIPE,
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                slice::from_ref(&image_memory_barrier),
-            )
-        };
+        inner.application.main_device().memory_barrier(
+            inner.command_buffer,
+            inner.images[inner.current_image_index as usize],
+            vk::ImageLayout::UNDEFINED,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        );
         Ok(())
     }
 
@@ -307,30 +288,12 @@ impl GameRenderer {
         let inner = &self.0;
         let device = &inner.application.main_device().virtual_device();
         unsafe { device.cmd_end_rendering(inner.command_buffer) };
-
-        let image_memory_barrier = vk::ImageMemoryBarrier::default()
-            .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-            .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-            .image(inner.images[inner.current_image_index as usize])
-            .subresource_range(
-                vk::ImageSubresourceRange::default()
-                    .aspect_mask(vk::ImageAspectFlags::COLOR)
-                    .level_count(1)
-                    .layer_count(1),
-            );
-
-        unsafe {
-            device.cmd_pipeline_barrier(
-                inner.command_buffer,
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                slice::from_ref(&image_memory_barrier),
-            )
-        };
+        inner.application.main_device().memory_barrier(
+            inner.command_buffer,
+            inner.images[inner.current_image_index as usize],
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            vk::ImageLayout::PRESENT_SRC_KHR,
+        );
 
         // Move command buffer into executable state
         unsafe { device.end_command_buffer(inner.command_buffer) }?;
@@ -345,7 +308,7 @@ impl GameRenderer {
             .signal_semaphores(slice::from_ref(&inner.present_semaphore));
         unsafe {
             device.queue_submit(
-                inner.queue,
+                *self.0.application.main_device().queue(),
                 slice::from_ref(&submit_info),
                 vk::Fence::null(),
             )
@@ -358,7 +321,7 @@ impl GameRenderer {
         unsafe {
             inner
                 .swapchain_loader
-                .queue_present(inner.queue, &present_info)
+                .queue_present(*self.0.application.main_device().queue(), &present_info)
         }?;
 
         // Wait for finish operations

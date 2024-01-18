@@ -65,7 +65,6 @@ impl Buffer {
     /// This function allows to write arbitrary data into the buffer's memory. The input data can't be bigger than the
     /// size, specified in th allocation info.
     pub fn write<T>(&self, data: T) -> Result<()> {
-        // Validate the size of the data
         let input_size = mem::size_of::<T>() as u64;
         if self.size < input_size {
             panic!(
@@ -74,7 +73,6 @@ impl Buffer {
             );
         }
 
-        // Map memory into pointer
         unsafe {
             std::ptr::copy_nonoverlapping(&data as *const _, self.alloc_info.mapped_data.cast(), 1);
         }

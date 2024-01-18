@@ -126,7 +126,6 @@ impl RenderPipeline {
 
         // Color Blend infos
         let pipeline_color_blend_attachment_info = vk::PipelineColorBlendAttachmentState::default()
-            .blend_enable(true)
             .color_write_mask(vk::ColorComponentFlags::RGBA);
         let pipeline_color_blend_state_create_info =
             vk::PipelineColorBlendStateCreateInfo::default()

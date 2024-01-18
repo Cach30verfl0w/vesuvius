@@ -1,6 +1,6 @@
 pub mod screens;
 
-use glam::{Vec2, Vec3};
+use glam::Vec2;
 use screens::MainMenuScreen;
 #[cfg(feature = "debug_extensions")]
 use vesuvius_engine::debug::DebugExtension;
@@ -14,7 +14,7 @@ use vesuvius_engine::App;
 #[repr(C)]
 pub struct Vertex {
     position: Vec2,
-    color: Vec3,
+    uv: Vec2,
 }
 
 fn main() {

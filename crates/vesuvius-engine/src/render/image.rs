@@ -62,7 +62,7 @@ impl Image {
         let staging_buffer = Buffer::new(
             app.clone(),
             vk::BufferUsageFlags::TRANSFER_SRC,
-            (pixels.len() * 8) as _,
+            (pixels.len() * 6) as _,
         )?;
         staging_buffer.write(pixels.as_slice())?;
         let (image, image_alloc, _image_alloc_info) = unsafe {

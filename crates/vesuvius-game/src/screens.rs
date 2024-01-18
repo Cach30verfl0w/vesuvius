@@ -1,10 +1,11 @@
 use crate::Vertex;
 use ash::vk;
-use glam::{Vec2, Vec3};
+use glam::Vec2;
 use std::mem::size_of;
+use std::slice;
 use vesuvius_engine::render::buffer::Buffer;
 use vesuvius_engine::render::image::Image;
-use vesuvius_engine::render::pipeline::DescriptorSet;
+use vesuvius_engine::render::pipeline::{DescriptorSet, WriteDescriptorSet};
 use vesuvius_engine::render::GameRenderer;
 use vesuvius_engine::screen::Screen;
 use vesuvius_engine::App;
@@ -27,22 +28,22 @@ impl Screen for MainMenuScreen {
         )
         .unwrap();
         vertex_buffer
-            .write(&[
+            .write([
                 Vertex {
                     position: Vec2::new(-0.5, -0.5),
-                    color: Vec3::new(1.0, 1.0, 1.0),
+                    uv: Vec2::new(1.0, 0.0)
                 },
                 Vertex {
                     position: Vec2::new(0.5, -0.5),
-                    color: Vec3::new(1.0, 1.0, 1.0),
+                    uv: Vec2::new(0.0, 0.0)
                 },
                 Vertex {
                     position: Vec2::new(0.5, 0.5),
-                    color: Vec3::new(1.0, 1.0, 1.0),
+                    uv: Vec2::new(0.0, 1.0)
                 },
                 Vertex {
                     position: Vec2::new(-0.5, 0.5),
-                    color: Vec3::new(1.0, 1.0, 1.0),
+                    uv: Vec2::new(1.0, 1.0)
                 },
             ])
             .unwrap();
@@ -54,20 +55,20 @@ impl Screen for MainMenuScreen {
         )
         .unwrap();
         index_buffer
-            .write(&[0u16, 1u16, 2u16, 2u16, 3u16, 0u16])
+            .write([0u16, 1u16, 2u16, 2u16, 3u16, 0u16])
             .unwrap();
 
-        /*self.image = Some(Image::from_file(&application, "assets/resources/images/image.png").unwrap());
+        self.image = Some(Image::from_file(&application, "assets/resources/images/image.png").unwrap());
         let descriptor_set = DescriptorSet::allocate(&self.renderer, "image", 0).unwrap();
         self.image.as_ref().unwrap().write_to_set(&descriptor_set, 0);
-        self.descriptor_set = Some(descriptor_set);*/
+        self.descriptor_set = Some(descriptor_set);
 
         self.vertex_buffer = Some(vertex_buffer);
         self.index_buffer = Some(index_buffer);
     }
 
     fn render(&self, renderer: &mut GameRenderer) {
-        renderer.bind_pipeline(renderer.find_pipeline("draw").unwrap(), &[]);
+        renderer.bind_pipeline(renderer.find_pipeline("image").unwrap(), slice::from_ref(self.descriptor_set.as_ref().unwrap()));
         renderer.bind_vertex_buffer(self.vertex_buffer.as_ref().unwrap());
         renderer.draw_indexed(self.index_buffer.as_ref().unwrap());
     }

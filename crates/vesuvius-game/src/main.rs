@@ -1,7 +1,6 @@
 pub mod screens;
 
 use glam::{Vec2, Vec3};
-use log::{debug, info};
 use screens::MainMenuScreen;
 #[cfg(feature = "debug_extensions")]
 use vesuvius_engine::debug::DebugExtension;
@@ -15,14 +14,15 @@ use vesuvius_engine::App;
 #[repr(C)]
 pub struct Vertex {
     position: Vec2,
-    color: Vec3,
+    color: Option<Vec3>,
+    uv: Option<Vec2>,
 }
 
 fn main() {
     simple_logger::init().unwrap();
 
     // Create window
-    info!("Create 1200x800 game window");
+    log::info!("Create 1200x800 game window");
     let window_event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title(concat!(
@@ -41,22 +41,21 @@ fn main() {
     renderer.reload().unwrap();
 
     app.open_screen(Box::new(MainMenuScreen {
+        renderer: renderer.clone(),
         vertex_buffer: None,
         index_buffer: None,
-        alpha_buffer: None,
-        renderer: renderer.clone(),
-        descriptor_set: None,
+        image: None,
     }));
-    info!("Successfully created application and renderer");
+    log::info!("Successfully created application and renderer");
 
     #[cfg(feature = "debug_extensions")]
     {
-        debug!("Game-internal debug extensions enabled (Game is compiled for debug)");
-        let debug_extension = DebugExtension::new(renderer.clone());
+        log::debug!("Game-internal debug extensions enabled (Game is compiled for debug)");
+        let _debug_extension = DebugExtension::new(renderer.clone());
     }
 
     // Game Loop
-    info!("Init game loop and display game");
+    log::info!("Init game loop and display game");
     window_event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
         match event {

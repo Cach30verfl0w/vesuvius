@@ -1,6 +1,7 @@
 use crate::App;
 use crate::Result;
 use ash::vk;
+
 use std::mem;
 use vk_mem_alloc::{Allocation, AllocationCreateFlags, AllocationInfo};
 
@@ -34,7 +35,7 @@ impl Buffer {
     pub fn new(app: App, usage: vk::BufferUsageFlags, size: vk::DeviceSize) -> Result<Self> {
         let buffer_create_info = vk::BufferCreateInfo {
             usage,
-            size: size as u64,
+            size,
             ..Default::default()
         };
 
@@ -63,9 +64,9 @@ impl Buffer {
 
     /// This function allows to write arbitrary data into the buffer's memory. The input data can't be bigger than the
     /// size, specified in th allocation info.
-    pub fn write<T>(&self, data: T) -> Result<()> {
+    pub fn write<T>(&self, data: &[T]) -> Result<()> {
         // Validate the size of the data
-        let input_size = mem::size_of::<T>() as u64;
+        let input_size = (mem::size_of::<T>() * data.len()) as u64;
         if self.size < input_size {
             panic!(
                 "Error while writing buffer => Input Size ({}) is bigger than Buffer Size ({})",
@@ -74,7 +75,6 @@ impl Buffer {
         }
 
         // Map memory into pointer
-        let allocator = *self.app.main_device().allocator();
         unsafe {
             std::ptr::copy_nonoverlapping(&data as *const _, self.alloc_info.mapped_data.cast(), 1);
         }

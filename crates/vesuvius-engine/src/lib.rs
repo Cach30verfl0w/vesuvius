@@ -1,5 +1,7 @@
 #![feature(get_mut_unchecked)]
 
+extern crate core;
+
 #[cfg(feature = "debug_extensions")]
 pub mod debug;
 pub mod device;
@@ -48,6 +50,9 @@ struct AppInner {
     /// The current screen (game state) of the application
     current_screen: Option<Box<dyn Screen>>,
 }
+
+unsafe impl Send for AppInner {}
+unsafe impl Sync for AppInner {}
 
 impl Drop for AppInner {
     fn drop(&mut self) {
@@ -125,8 +130,8 @@ impl App {
     }
 
     #[inline]
-    pub fn screen(&self) -> Option<&Box<dyn Screen>> {
-        self.0.current_screen.as_ref()
+    pub fn screen(&self) -> Option<&dyn Screen> {
+        self.0.current_screen.as_ref().map(|value| value.as_ref())
     }
 
     #[inline]

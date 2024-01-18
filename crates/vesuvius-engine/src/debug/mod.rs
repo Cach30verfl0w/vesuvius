@@ -1,3 +1,4 @@
+#![allow(dead_code)] // TODO: Work in progress
 use crate::render::GameRenderer;
 
 pub struct DebugExtension {

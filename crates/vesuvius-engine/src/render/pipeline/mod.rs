@@ -125,6 +125,7 @@ impl RenderPipeline {
 
         // Color Blend infos
         let pipeline_color_blend_attachment_info = vk::PipelineColorBlendAttachmentState::default()
+            .blend_enable(true)
             .color_write_mask(vk::ColorComponentFlags::RGBA);
         let pipeline_color_blend_state_create_info =
             vk::PipelineColorBlendStateCreateInfo::default()
@@ -257,16 +258,18 @@ impl DescriptorSet {
     pub fn allocate(renderer: &GameRenderer, pipeline: &str, set_index: usize) -> Result<Self> {
         let found_pipeline = renderer
             .find_pipeline(pipeline)
-            .expect(&format!("Invalid pipeline name '{}'", pipeline));
+            .unwrap_or_else(|| panic!("Invalid pipeline name '{}'", pipeline));
         let (descriptor_set, binding_types) = found_pipeline
             .descriptor_set_layouts
             .as_ref()
             .unwrap()
             .get(set_index)
-            .expect(&format!(
-                "Unable to find descriptor set by index '{}' in pipeline '{}'",
-                set_index, pipeline
-            ));
+            .unwrap_or_else(|| {
+                panic!(
+                    "Unable to find descriptor set by index '{}' in pipeline '{}'",
+                    set_index, pipeline
+                )
+            });
 
         let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::default()
             .descriptor_pool(renderer.0.descriptor_pool)

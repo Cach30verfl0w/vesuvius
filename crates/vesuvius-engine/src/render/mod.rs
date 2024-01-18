@@ -1,4 +1,5 @@
 pub mod buffer;
+pub mod image;
 pub mod pipeline;
 
 use crate::render::buffer::Buffer;
@@ -132,9 +133,14 @@ impl GameRenderer {
 
         // Create descriptor pool
         // TODO
-        let descriptor_pool_sizes = [vk::DescriptorPoolSize::default()
-            .descriptor_count(1)
-            .ty(DescriptorType::UNIFORM_BUFFER)];
+        let descriptor_pool_sizes = [
+            vk::DescriptorPoolSize::default()
+                .descriptor_count(1)
+                .ty(DescriptorType::UNIFORM_BUFFER),
+            vk::DescriptorPoolSize::default()
+                .descriptor_count(1)
+                .ty(DescriptorType::COMBINED_IMAGE_SAMPLER),
+        ];
         let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::default()
             .pool_sizes(&descriptor_pool_sizes)
             .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
@@ -374,7 +380,7 @@ impl GameRenderer {
                 );
         }
 
-        if descriptor_sets.len() > 0 {
+        if !descriptor_sets.is_empty() {
             let raw_descriptor_sets = descriptor_sets
                 .iter()
                 .map(|value| value.vk_descriptor_set)

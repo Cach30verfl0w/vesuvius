@@ -1,9 +1,9 @@
 use crate::render::buffer::Buffer;
 use crate::{App, Result};
 use ash::vk;
+use log::{debug, info};
 use std::path::Path;
 use std::slice;
-use log::{debug, info};
 use vk_mem_alloc::{Allocation, AllocationCreateFlags, AllocationCreateInfo, MemoryUsage};
 
 pub struct Image {
@@ -28,7 +28,10 @@ impl Drop for Image {
 
 impl Image {
     pub fn from_file<P: AsRef<Path>>(app: &App, path: P) -> Result<Self> {
-        info!("Loading resource '{}' as image", path.as_ref().file_name().unwrap().to_str().unwrap());
+        info!(
+            "Loading resource '{}' as image",
+            path.as_ref().file_name().unwrap().to_str().unwrap()
+        );
         let device = app.main_device();
         let vk_device = device.virtual_device();
 
@@ -69,8 +72,8 @@ impl Image {
             vk::BufferUsageFlags::TRANSFER_SRC,
             image_alloc_info.size,
             Some(
-                AllocationCreateFlags::HOST_ACCESS_SEQUENTIAL_WRITE | AllocationCreateFlags::MAPPED
-            )
+                AllocationCreateFlags::HOST_ACCESS_SEQUENTIAL_WRITE | AllocationCreateFlags::MAPPED,
+            ),
         )?;
         staging_buffer.write_ptr(pixels.as_ptr(), pixels.len())?;
 
@@ -95,7 +98,7 @@ impl Image {
                         .aspect_mask(vk::ImageAspectFlags::COLOR)
                         .mip_level(0)
                         .base_array_layer(0)
-                        .layer_count(1)
+                        .layer_count(1),
                 );
 
             vk_device.cmd_copy_buffer_to_image(

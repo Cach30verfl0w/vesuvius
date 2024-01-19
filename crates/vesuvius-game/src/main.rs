@@ -31,6 +31,7 @@ fn main() {
             env!("CARGO_PKG_AUTHORS")
         ))
         .with_inner_size(PhysicalSize::new(1200, 800))
+        .with_visible(false)
         .build(&window_event_loop)
         .unwrap();
 
@@ -55,6 +56,7 @@ fn main() {
     }
 
     // Game Loop
+    app.window().set_visible(true);
     log::info!("Init game loop and display game");
     window_event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;

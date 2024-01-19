@@ -3,7 +3,7 @@ use crate::Result;
 use ash::vk;
 
 use std::mem;
-use vk_mem_alloc::{Allocation, AllocationCreateFlags, AllocationInfo};
+use vk_mem_alloc::{Allocation, AllocationCreateFlags, AllocationCreateInfo, AllocationInfo};
 
 /// This structure represents an allocated buffer with device memory. This struct contains a device, the buffer handle
 /// itself, the allocation handle and the info about the allocation and allows a simple write function to write
@@ -32,16 +32,23 @@ impl Drop for Buffer {
 impl Buffer {
     /// This function creates a new buffer with the specified size or the specified usage. This buffer is created with
     /// the vk_mem_alloc crate.
-    pub fn new(app: App, usage: vk::BufferUsageFlags, size: vk::DeviceSize) -> Result<Self> {
+    pub fn new(
+        app: App,
+        usage: vk::BufferUsageFlags,
+        size: vk::DeviceSize,
+        alloc_flags: Option<AllocationCreateFlags>,
+    ) -> Result<Self> {
         let buffer_create_info = vk::BufferCreateInfo {
             usage,
             size,
             ..Default::default()
         };
 
-        let alloc_create_info = vk_mem_alloc::AllocationCreateInfo {
-            usage: vk_mem_alloc::MemoryUsage::AUTO_PREFER_HOST,
-            flags: AllocationCreateFlags::HOST_ACCESS_RANDOM | AllocationCreateFlags::MAPPED,
+        let alloc_create_info = AllocationCreateInfo {
+            usage: vk_mem_alloc::MemoryUsage::AUTO,
+            flags: alloc_flags.unwrap_or(
+                AllocationCreateFlags::HOST_ACCESS_RANDOM | AllocationCreateFlags::MAPPED,
+            ),
             ..Default::default()
         };
 
@@ -75,6 +82,21 @@ impl Buffer {
 
         unsafe {
             std::ptr::copy_nonoverlapping(&data as *const _, self.alloc_info.mapped_data.cast(), 1);
+        }
+        Ok(())
+    }
+
+    pub fn write_ptr<T>(&self, data: *const T, count: usize) -> Result<()> {
+        let input_size = mem::size_of::<T>() * count;
+        if self.size < input_size as u64 {
+            panic!(
+                "Error while writing buffer => Input Size ({}) is bigger than Buffer Size ({})",
+                input_size, self.size
+            );
+        }
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(data, self.alloc_info.mapped_data.cast(), count);
         }
         Ok(())
     }

@@ -3,7 +3,7 @@ use crate::{App, Result};
 use ash::vk;
 use std::path::Path;
 use std::slice;
-use vk_mem_alloc::{Allocation, AllocationCreateInfo, MemoryUsage};
+use vk_mem_alloc::{Allocation, AllocationCreateFlags, AllocationCreateInfo, MemoryUsage};
 
 pub struct Image {
     app: App,
@@ -33,9 +33,9 @@ impl Image {
         // Read image
         let image = image::open(path)?.to_rgba8();
         let (width, height) = (image.width(), image.height());
-        let pixels = image.pixels().collect::<Vec<_>>();
+        let pixels = image.pixels().map(|pixel| pixel.0).collect::<Vec<_>>();
 
-        // Prepare image creation
+        // Create image and image buffer
         let image_create_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(vk::Extent3D {
@@ -45,29 +45,31 @@ impl Image {
             })
             .mip_levels(1)
             .array_layers(1)
-            .format(vk::Format::R8G8B8A8_SRGB)
+            .format(vk::Format::R8G8B8A8_UNORM)
             .tiling(vk::ImageTiling::OPTIMAL)
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .samples(vk::SampleCountFlags::TYPE_1);
 
-        let allocator = *device.allocator();
         let image_alloc_create_info = AllocationCreateInfo {
             usage: MemoryUsage::AUTO,
             ..Default::default()
         };
+        let allocator = *device.allocator();
+        let (image, image_alloc, image_alloc_info) = unsafe {
+            vk_mem_alloc::create_image(allocator, &image_create_info, &image_alloc_create_info)
+        }?;
 
-        // Create image and copy image data into it
         let staging_buffer = Buffer::new(
             app.clone(),
             vk::BufferUsageFlags::TRANSFER_SRC,
-            (pixels.len() * 6) as _,
+            image_alloc_info.size,
+            Some(
+                AllocationCreateFlags::HOST_ACCESS_SEQUENTIAL_WRITE | AllocationCreateFlags::MAPPED
+            )
         )?;
-        staging_buffer.write(pixels.as_slice())?;
-        let (image, image_alloc, _image_alloc_info) = unsafe {
-            vk_mem_alloc::create_image(allocator, &image_create_info, &image_alloc_create_info)
-        }?;
+        staging_buffer.write_ptr(pixels.as_ptr(), pixels.len())?;
 
         // Command Buffer move memory to image
         app.upload_single_time_command_buffer(|command_buffer| unsafe {
@@ -89,7 +91,7 @@ impl Image {
                         .aspect_mask(vk::ImageAspectFlags::COLOR)
                         .mip_level(0)
                         .base_array_layer(0)
-                        .layer_count(1),
+                        .layer_count(1)
                 );
 
             vk_device.cmd_copy_buffer_to_image(
@@ -112,8 +114,7 @@ impl Image {
         let image_view_create_info = vk::ImageViewCreateInfo::default()
             .image(image)
             .view_type(vk::ImageViewType::TYPE_2D)
-            .format(vk::Format::R8G8B8A8_SRGB)
-            .components(vk::ComponentMapping::default())
+            .format(vk::Format::R8G8B8A8_UNORM)
             .subresource_range(
                 vk::ImageSubresourceRange::default()
                     .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -139,8 +140,29 @@ impl Image {
             app: app.clone(),
             image,
             image_view,
-            image_alloc,
             sampler,
+            image_alloc,
         })
     }
+}
+
+pub fn get_memory_type_index(
+    app: &App,
+    type_filter: Option<u32>,
+    properties: vk::MemoryPropertyFlags,
+) -> u32 {
+    let memory_properties = unsafe {
+        app.instance()
+            .get_physical_device_memory_properties(app.main_device().physical_device())
+    };
+    for i in 0..memory_properties.memory_type_count as usize {
+        if type_filter
+            .map(|filter| (filter & (1 << i)) != 0)
+            .unwrap_or(true)
+            && !(memory_properties.memory_types[i].property_flags & properties).is_empty()
+        {
+            return i as u32;
+        }
+    }
+    panic!("No support ig... ._.")
 }

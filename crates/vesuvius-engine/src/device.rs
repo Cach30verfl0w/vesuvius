@@ -1,4 +1,5 @@
 use crate::Result;
+use ash::vk::PhysicalDevice;
 use ash::{vk, Device, Instance};
 use std::ffi::CStr;
 use std::fmt::{Display, Formatter};
@@ -158,5 +159,10 @@ impl WrappedDevice {
     #[inline]
     pub(crate) fn virtual_device(&self) -> &Device {
         &self.0.virtual_device
+    }
+
+    #[inline]
+    pub(crate) fn physical_device(&self) -> PhysicalDevice {
+        self.0.physical_device
     }
 }

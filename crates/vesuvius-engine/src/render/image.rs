@@ -3,6 +3,7 @@ use crate::{App, Result};
 use ash::vk;
 use std::path::Path;
 use std::slice;
+use log::{debug, info};
 use vk_mem_alloc::{Allocation, AllocationCreateFlags, AllocationCreateInfo, MemoryUsage};
 
 pub struct Image {
@@ -27,6 +28,7 @@ impl Drop for Image {
 
 impl Image {
     pub fn from_file<P: AsRef<Path>>(app: &App, path: P) -> Result<Self> {
+        info!("Loading resource '{}' as image", path.as_ref().file_name().unwrap().to_str().unwrap());
         let device = app.main_device();
         let vk_device = device.virtual_device();
 
@@ -61,6 +63,7 @@ impl Image {
             vk_mem_alloc::create_image(allocator, &image_create_info, &image_alloc_create_info)
         }?;
 
+        debug!("Initialize and write staging buffer");
         let staging_buffer = Buffer::new(
             app.clone(),
             vk::BufferUsageFlags::TRANSFER_SRC,
@@ -72,6 +75,7 @@ impl Image {
         staging_buffer.write_ptr(pixels.as_ptr(), pixels.len())?;
 
         // Command Buffer move memory to image
+        debug!("Use staging buffer to upload pixel data into resource image");
         app.upload_single_time_command_buffer(|command_buffer| unsafe {
             device.memory_barrier(
                 command_buffer,
@@ -111,6 +115,7 @@ impl Image {
         })?;
 
         // Create image view
+        debug!("Create image view and sampler by resource");
         let image_view_create_info = vk::ImageViewCreateInfo::default()
             .image(image)
             .view_type(vk::ImageViewType::TYPE_2D)

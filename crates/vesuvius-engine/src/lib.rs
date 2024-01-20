@@ -180,6 +180,19 @@ impl App {
     }
 
     #[inline]
+    pub fn screen_mut(&mut self) -> Option<&mut dyn Screen> {
+        // Yeah ik, there is the map function in Option... But when I use this, the borrow checker doesn't like me
+        // anymore
+        match unsafe { Arc::get_mut_unchecked(&mut self.0) }
+            .current_screen
+            .as_mut()
+        {
+            Some(value) => Some(value.as_mut()),
+            None => None,
+        }
+    }
+
+    #[inline]
     pub(crate) fn instance(&self) -> &Instance {
         &self.0.instance
     }

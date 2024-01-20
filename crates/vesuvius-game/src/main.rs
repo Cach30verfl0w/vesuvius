@@ -6,7 +6,7 @@ use screens::MainMenuScreen;
 use vesuvius_engine::debug::DebugExtension;
 use vesuvius_engine::render::GameRenderer;
 use vesuvius_engine::vesuvius_winit::dpi::PhysicalSize;
-use vesuvius_engine::vesuvius_winit::event::{Event, WindowEvent};
+use vesuvius_engine::vesuvius_winit::event::{ElementState, Event, ModifiersState, WindowEvent};
 use vesuvius_engine::vesuvius_winit::event_loop::{ControlFlow, EventLoop};
 use vesuvius_engine::vesuvius_winit::window::WindowBuilder;
 use vesuvius_engine::App;
@@ -58,16 +58,36 @@ fn main() {
     // Game Loop
     app.window().set_visible(true);
     log::info!("Init game loop and display game");
+    let mut current_modifiers_state = ModifiersState::empty();
     window_event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
         match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                window_id,
-            } if window_id == app.window().id() => {
-                *control_flow = ControlFlow::Exit;
+            Event::WindowEvent { event, window_id } if window_id == app.window().id() => {
+                match event {
+                    WindowEvent::ModifiersChanged(modifiers) => current_modifiers_state = modifiers,
+                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                    WindowEvent::KeyboardInput { input, .. } => {
+                        if let Some(keycode) = input.virtual_keycode {
+                            if let Some(screen) = app.screen_mut() {
+                                match input.state {
+                                    ElementState::Pressed => {
+                                        screen.on_key_pressed(keycode, current_modifiers_state)
+                                    }
+                                    ElementState::Released => {
+                                        screen.on_key_released(keycode, current_modifiers_state)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    WindowEvent::CursorMoved { position, .. } => {
+                        if let Some(screen) = app.screen_mut() {
+                            screen.on_mouse_moved(position);
+                        }
+                    }
+                    _ => {}
+                }
             }
-            Event::MainEventsCleared => app.window().request_redraw(),
             Event::RedrawRequested(_window_id) => {
                 renderer.begin().unwrap();
                 renderer.clear_color(0.0, 0.0, 0.0, 1.0);

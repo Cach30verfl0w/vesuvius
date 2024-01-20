@@ -6,7 +6,6 @@ use crate::render::buffer::Buffer;
 use crate::render::pipeline::config::PipelineConfiguration;
 use ash::extensions::khr::{Surface, Swapchain};
 use ash::vk;
-use ash::vk::DescriptorType;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use std::sync::Arc;
 use std::{fs, mem, slice};
@@ -135,10 +134,10 @@ impl GameRenderer {
         let descriptor_pool_sizes = [
             vk::DescriptorPoolSize::default()
                 .descriptor_count(1)
-                .ty(DescriptorType::UNIFORM_BUFFER),
+                .ty(vk::DescriptorType::UNIFORM_BUFFER),
             vk::DescriptorPoolSize::default()
                 .descriptor_count(1)
-                .ty(DescriptorType::COMBINED_IMAGE_SAMPLER),
+                .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER),
         ];
         let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::default()
             .pool_sizes(&descriptor_pool_sizes)

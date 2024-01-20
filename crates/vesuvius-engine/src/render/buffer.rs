@@ -86,7 +86,7 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn write_ptr<T>(&self, data: *const T, count: usize) -> Result<()> {
+    pub(crate) fn write_ptr<T>(&self, data: *const T, count: usize) -> Result<()> {
         let input_size = mem::size_of::<T>() * count;
         if self.size < input_size as u64 {
             panic!(

@@ -86,25 +86,14 @@ impl RenderPipeline {
     }
 
     pub fn compile(&mut self) -> Result<()> {
-        let window_size = self.application.window().inner_size();
         let device = self.application.main_device().virtual_device();
-
         for shader in self.shader_modules.iter_mut() {
             shader.compile()?;
         }
 
         // Viewport and scissor
-        let viewport = vk::Viewport::default()
-            .x(0.0)
-            .y(0.0)
-            .width(window_size.width as f32)
-            .height(window_size.height as f32)
-            .min_depth(0.0)
-            .max_depth(1.0);
-        let scissor = vk::Rect2D::default().extent(vk::Extent2D {
-            width: window_size.width,
-            height: window_size.height,
-        });
+        let viewport = vk::Viewport::default();
+        let scissor = vk::Rect2D::default();
         let viewport_state_create_info = vk::PipelineViewportStateCreateInfo::default()
             .scissors(slice::from_ref(&scissor))
             .viewports(slice::from_ref(&viewport));
@@ -161,7 +150,9 @@ impl RenderPipeline {
         // Create pipeline with recompiled shader modules
         let mut pipeline_rendering_create_info = vk::PipelineRenderingCreateInfo::default()
             .color_attachment_formats(&[vk::Format::B8G8R8A8_UNORM]);
-        let dynamic_state_create_info = vk::PipelineDynamicStateCreateInfo::default();
+        let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+        let dynamic_state_create_info =
+            vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
         let input_assembly_state_create_info = vk::PipelineInputAssemblyStateCreateInfo::default()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST) // Weather draw the stuff as triangles, lines etc.
             .primitive_restart_enable(false); // Ignore lol

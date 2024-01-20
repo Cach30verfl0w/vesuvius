@@ -8,7 +8,6 @@ use vesuvius_engine::render::image::Image;
 use vesuvius_engine::render::pipeline::{DescriptorSet, WriteDescriptorSet};
 use vesuvius_engine::render::GameRenderer;
 use vesuvius_engine::screen::Screen;
-use vesuvius_engine::vesuvius_winit::dpi::PhysicalPosition;
 use vesuvius_engine::App;
 
 #[allow(dead_code)] // TODO
@@ -72,10 +71,6 @@ impl Screen for MainMenuScreen {
 
         self.vertex_buffer = Some(vertex_buffer);
         self.index_buffer = Some(index_buffer);
-    }
-
-    fn on_mouse_moved(&mut self, position: PhysicalPosition<f64>) {
-        println!("{:?}", position);
     }
 
     fn render(&self, renderer: &mut GameRenderer) {

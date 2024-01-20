@@ -30,6 +30,7 @@ fn main() {
             " by ",
             env!("CARGO_PKG_AUTHORS")
         ))
+        .with_min_inner_size(PhysicalSize::new(600, 600))
         .with_inner_size(PhysicalSize::new(1200, 800))
         .with_visible(false)
         .build(&window_event_loop)
@@ -38,7 +39,7 @@ fn main() {
     // Create application
     let mut app = App::new(window).unwrap();
     let mut renderer = GameRenderer::new(app.clone()).unwrap();
-    renderer.reload().unwrap();
+    renderer.reload(true).unwrap();
 
     app.open_screen(Box::new(MainMenuScreen {
         renderer: renderer.clone(),
@@ -62,10 +63,12 @@ fn main() {
     window_event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
         match event {
+            Event::MainEventsCleared => app.window().request_redraw(),
             Event::WindowEvent { event, window_id } if window_id == app.window().id() => {
                 match event {
                     WindowEvent::ModifiersChanged(modifiers) => current_modifiers_state = modifiers,
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                    WindowEvent::Resized(_resized_size) => renderer.reload(false).unwrap(),
                     WindowEvent::KeyboardInput { input, .. } => {
                         if let Some(keycode) = input.virtual_keycode {
                             if let Some(screen) = app.screen_mut() {

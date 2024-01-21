@@ -7,6 +7,7 @@ use crate::render::pipeline::config::PipelineConfiguration;
 use ash::extensions::khr::{Surface, Swapchain};
 use ash::vk;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
+use std::fmt::Debug;
 use std::sync::Arc;
 use std::{fs, mem, slice};
 
@@ -257,18 +258,16 @@ impl GameRenderer {
             device.reset_command_pool(
                 inner.command_pool,
                 vk::CommandPoolResetFlags::RELEASE_RESOURCES,
-            )
-        }?;
-        unsafe {
+            )?;
             device.reset_command_buffer(
                 inner.command_buffer,
                 vk::CommandBufferResetFlags::RELEASE_RESOURCES,
-            )
-        }?;
-        unsafe {
-            device
-                .begin_command_buffer(inner.command_buffer, &vk::CommandBufferBeginInfo::default())
-        }?;
+            )?;
+            device.begin_command_buffer(
+                inner.command_buffer,
+                &vk::CommandBufferBeginInfo::default(),
+            )?;
+        };
 
         inner.application.main_device().memory_barrier(
             inner.command_buffer,
@@ -360,7 +359,8 @@ impl GameRenderer {
                 }
                 Err(error)
             }
-        }.unwrap();
+        }
+        .unwrap();
 
         // Wait for finish operations
         unsafe { device.device_wait_idle() }?;
@@ -458,5 +458,39 @@ impl GameRenderer {
             .pipelines
             .iter()
             .find(|pipeline| pipeline.name == pipeline_name)
+    }
+}
+
+pub trait Vertex: Clone + Debug + Default {}
+
+#[derive(Clone, Debug, Default)]
+pub struct BufferBuilder<V: Vertex> {
+    vertices: Vec<V>,
+    indices: Vec<u16>,
+}
+
+impl<V: Vertex> BufferBuilder<V> {
+    pub fn add_triangle(&mut self, vertex0: V, vertex1: V, vertex2: V) -> &mut Self {
+        let count = self.vertices.len() as u16;
+        self.indices
+            .extend_from_slice(&[count, count + 1, count + 2]);
+        self.vertices
+            .extend_from_slice(&[vertex0, vertex1, vertex2]);
+        self
+    }
+
+    pub fn add_quad(&mut self, vertex0: V, vertex1: V, vertex2: V, vertex3: V) -> &mut Self {
+        let count = self.vertices.len() as u16;
+        self.indices.extend_from_slice(&[
+            count,
+            count + 1,
+            count + 3,
+            count + 3,
+            count + 1,
+            count + 2,
+        ]);
+        self.vertices
+            .extend_from_slice(&[vertex0, vertex1, vertex2, vertex3]);
+        self
     }
 }

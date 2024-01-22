@@ -42,6 +42,8 @@ struct GameRendererInner {
     // Other things
     pipelines: Vec<RenderPipeline>,
     descriptor_pool: vk::DescriptorPool,
+    queued_vertex_buffers: Vec<Buffer>,
+    queued_index_buffers: Vec<Buffer>,
 }
 
 impl Drop for GameRendererInner {
@@ -135,6 +137,8 @@ impl GameRenderer {
             surface,
             pipelines: Vec::new(),
             descriptor_pool,
+            queued_vertex_buffers: Vec::new(),
+            queued_index_buffers: Vec::new(),
         })))
     }
 
@@ -313,6 +317,25 @@ impl GameRenderer {
     }
 
     pub fn end(&mut self) -> Result<()> {
+        // Dequeue buffers
+        if self.0.queued_vertex_buffers.len() != self.0.queued_index_buffers.len() {
+            panic!(
+                "Vertex buffer count ({}) is not matching with Index Buffer count {}",
+                self.0.queued_vertex_buffers.len(),
+                self.0.queued_index_buffers.len()
+            );
+        }
+
+        for i in 0..self.0.queued_vertex_buffers.len() {
+            let vertex_buffer = self.0.queued_vertex_buffers.get(i).unwrap();
+            let index_buffer = self.0.queued_index_buffers.get(i).unwrap();
+
+            self.bind_pipeline(self.find_pipeline("draw").unwrap(), &[]);
+            self.bind_vertex_buffer(vertex_buffer);
+            self.draw_indexed(index_buffer);
+        }
+
+        // Memory barrier
         let device = &self.0.application.main_device().virtual_device();
         unsafe { device.cmd_end_rendering(self.0.command_buffer) };
         self.0.application.main_device().memory_barrier(
@@ -364,6 +387,11 @@ impl GameRenderer {
 
         // Wait for finish operations
         unsafe { device.device_wait_idle() }?;
+
+        // Cleanup queues
+        let mutable_inner = unsafe { Arc::get_mut_unchecked(&mut self.0) };
+        mutable_inner.queued_vertex_buffers.clear();
+        mutable_inner.queued_index_buffers.clear();
         Ok(())
     }
 
@@ -492,5 +520,29 @@ impl<V: Vertex> BufferBuilder<V> {
         self.vertices
             .extend_from_slice(&[vertex0, vertex1, vertex2, vertex3]);
         self
+    }
+
+    pub fn build(&self, renderer: &mut GameRenderer) -> Result<()> {
+        let app = &renderer.0.application;
+        let vertex_buffer = Buffer::new(
+            app.clone(),
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            (mem::size_of::<V>() * self.vertices.len()) as vk::DeviceSize,
+            None,
+        )?;
+        vertex_buffer.write_ptr(self.vertices.as_ptr(), self.vertices.len())?;
+
+        let index_buffer = Buffer::new(
+            app.clone(),
+            vk::BufferUsageFlags::INDEX_BUFFER,
+            (mem::size_of::<u16>() * self.indices.len()) as vk::DeviceSize,
+            None,
+        )?;
+        index_buffer.write_ptr(self.indices.as_ptr(), self.indices.len())?;
+
+        let mutable_inner = unsafe { Arc::get_mut_unchecked(&mut renderer.0) };
+        mutable_inner.queued_vertex_buffers.push(vertex_buffer);
+        mutable_inner.queued_index_buffers.push(index_buffer);
+        Ok(())
     }
 }

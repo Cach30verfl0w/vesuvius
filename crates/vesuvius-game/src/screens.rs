@@ -1,12 +1,11 @@
-use crate::Vertex;
+use crate::{DVertex, Vertex};
 use ash::vk;
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 use std::mem::size_of;
-use std::slice;
 use vesuvius_engine::render::buffer::Buffer;
 use vesuvius_engine::render::image::Image;
 use vesuvius_engine::render::pipeline::{DescriptorSet, WriteDescriptorSet};
-use vesuvius_engine::render::GameRenderer;
+use vesuvius_engine::render::{BufferBuilder, GameRenderer};
 use vesuvius_engine::screen::Screen;
 use vesuvius_engine::App;
 
@@ -74,11 +73,51 @@ impl Screen for MainMenuScreen {
     }
 
     fn render(&self, renderer: &mut GameRenderer) {
-        renderer.bind_pipeline(
-            renderer.find_pipeline("image").unwrap(),
-            slice::from_ref(self.descriptor_set.as_ref().unwrap()),
-        );
-        renderer.bind_vertex_buffer(self.vertex_buffer.as_ref().unwrap());
-        renderer.draw_indexed(self.index_buffer.as_ref().unwrap());
+        //renderer.bind_pipeline(
+        //    renderer.find_pipeline("image").unwrap(),
+        //    slice::from_ref(self.descriptor_set.as_ref().unwrap()),
+        //);
+        //renderer.bind_vertex_buffer(self.vertex_buffer.as_ref().unwrap());
+
+        BufferBuilder::default()
+            .add_quad(
+                DVertex {
+                    position: Vec2::new(-0.25, -0.25), // Left-Top
+                    color: Vec3::new(1.0, 1.0, 1.0)
+                },
+                DVertex {
+                    position: Vec2::new(-0.5, -0.25), // Right-Top
+                    color: Vec3::new(1.0, 1.0, 1.0)
+                },
+                DVertex {
+                    position: Vec2::new(-0.5, -0.5), // Right-Bottom
+                    color: Vec3::new(1.0, 1.0, 1.0)
+                },
+                DVertex {
+                    position: Vec2::new(-0.25, -0.5), // Left-Bottom
+                    color: Vec3::new(1.0, 1.0, 1.0)
+                },
+            )
+            .add_quad(
+                DVertex {
+                    position: Vec2::new(0.75, 0.75), // Left-Top
+                    color: Vec3::new(1.0, 1.0, 1.0)
+                },
+                DVertex {
+                    position: Vec2::new(1.0, 0.75), // Right-Top
+                    color: Vec3::new(1.0, 1.0, 1.0)
+                },
+                DVertex {
+                    position: Vec2::new(1.0, 1.0), // Right-Bottom
+                    color: Vec3::new(1.0, 1.0, 1.0)
+                },
+                DVertex {
+                    position: Vec2::new(0.75, 1.0), // Left-Bottom
+                    color: Vec3::new(1.0, 1.0, 1.0)
+                },
+            )
+            .build(renderer)
+            .unwrap();
+        //renderer.draw_indexed(self.index_buffer.as_ref().unwrap());
     }
 }

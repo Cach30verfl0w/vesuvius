@@ -1,6 +1,6 @@
 pub mod screens;
 
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 use screens::MainMenuScreen;
 #[cfg(feature = "debug_extensions")]
 use vesuvius_engine::debug::DebugExtension;
@@ -16,6 +16,14 @@ pub struct Vertex {
     position: Vec2,
     uv: Vec2,
 }
+
+#[repr(C)]
+#[derive(Default, Clone, Debug)]
+pub struct DVertex {
+    position: Vec2,
+    color: Vec3,
+}
+impl vesuvius_engine::render::Vertex for DVertex {}
 
 fn main() {
     simple_logger::init().unwrap();

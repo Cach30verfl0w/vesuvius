@@ -1,0 +1,13 @@
+{
+  "name": "position_texcoord",
+  "shader": [
+    {
+      "kind": "vertex",
+      "resource": "assets/shader/position_texcoord.vertex.glsl"
+    },
+    {
+      "kind": "fragment",
+      "resource": "assets/shader/position_texcoord.fragment.glsl"
+    }
+  ]
+}

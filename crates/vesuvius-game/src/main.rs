@@ -1,6 +1,5 @@
 pub mod screens;
 
-use glam::{Vec2, Vec3};
 use screens::MainMenuScreen;
 #[cfg(feature = "debug_extensions")]
 use vesuvius_engine::debug::DebugExtension;
@@ -10,20 +9,6 @@ use vesuvius_engine::vesuvius_winit::event::{ElementState, Event, ModifiersState
 use vesuvius_engine::vesuvius_winit::event_loop::{ControlFlow, EventLoop};
 use vesuvius_engine::vesuvius_winit::window::WindowBuilder;
 use vesuvius_engine::App;
-
-#[repr(C)]
-pub struct Vertex {
-    position: Vec2,
-    uv: Vec2,
-}
-
-#[repr(C)]
-#[derive(Default, Clone, Debug)]
-pub struct DVertex {
-    position: Vec2,
-    color: Vec3,
-}
-impl vesuvius_engine::render::Vertex for DVertex {}
 
 fn main() {
     simple_logger::init().unwrap();
@@ -49,13 +34,7 @@ fn main() {
     let mut renderer = GameRenderer::new(app.clone()).unwrap();
     renderer.reload(true).unwrap();
 
-    app.open_screen(Box::new(MainMenuScreen {
-        renderer: renderer.clone(),
-        vertex_buffer: None,
-        index_buffer: None,
-        image: None,
-        descriptor_set: None,
-    }));
+    app.open_screen(Box::new(MainMenuScreen));
     log::info!("Successfully created application and renderer");
 
     #[cfg(feature = "debug_extensions")]

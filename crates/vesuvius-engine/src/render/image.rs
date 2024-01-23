@@ -4,9 +4,10 @@ use ash::vk;
 use log::{debug, info};
 use std::path::Path;
 use std::slice;
+use std::sync::Arc;
 use vk_mem_alloc::{Allocation, AllocationCreateFlags, AllocationCreateInfo, MemoryUsage};
 
-pub struct Image {
+pub struct ImageInner {
     app: App,
     image: vk::Image,
     image_alloc: Allocation,
@@ -14,7 +15,7 @@ pub struct Image {
     pub(crate) sampler: vk::Sampler,
 }
 
-impl Drop for Image {
+impl Drop for ImageInner {
     fn drop(&mut self) {
         let device = self.app.main_device();
         let vk_device = device.virtual_device();
@@ -23,6 +24,15 @@ impl Drop for Image {
             vk_device.destroy_sampler(self.sampler, None);
             vk_mem_alloc::destroy_image(*device.allocator(), self.image, self.image_alloc);
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct Image(pub(crate) Arc<ImageInner>);
+
+impl PartialEq for Image {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.image == other.0.image
     }
 }
 
@@ -144,13 +154,13 @@ impl Image {
             .mipmap_mode(vk::SamplerMipmapMode::LINEAR);
         let sampler = unsafe { vk_device.create_sampler(&sampler_create_info, None) }?;
 
-        Ok(Self {
+        Ok(Self(Arc::new(ImageInner {
             app: app.clone(),
             image,
             image_view,
             sampler,
             image_alloc,
-        })
+        })))
     }
 }
 

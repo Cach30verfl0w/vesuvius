@@ -1,0 +1,13 @@
+{
+  "name": "position_color",
+  "shader": [
+    {
+      "kind": "vertex",
+      "resource": "assets/shader/position_color.vertex.glsl"
+    },
+    {
+      "kind": "fragment",
+      "resource": "assets/shader/position_color.fragment.glsl"
+    }
+  ]
+}

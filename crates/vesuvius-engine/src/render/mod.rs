@@ -6,11 +6,13 @@ use crate::render::buffer::Buffer;
 use crate::render::pipeline::config::PipelineConfiguration;
 use ash::extensions::khr::{Surface, Swapchain};
 use ash::vk;
+use glam::{Vec2, Vec3};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::{fs, mem, slice};
 
+use crate::render::image::Image;
 use crate::render::pipeline::{DescriptorSet, RenderPipeline};
 use crate::App;
 use crate::Result;
@@ -42,8 +44,7 @@ struct GameRendererInner {
     // Other things
     pipelines: Vec<RenderPipeline>,
     descriptor_pool: vk::DescriptorPool,
-    queued_vertex_buffers: Vec<Buffer>,
-    queued_index_buffers: Vec<Buffer>,
+    queued_buffer_builder: Vec<BufferBuilder>
 }
 
 impl Drop for GameRendererInner {
@@ -137,8 +138,7 @@ impl GameRenderer {
             surface,
             pipelines: Vec::new(),
             descriptor_pool,
-            queued_vertex_buffers: Vec::new(),
-            queued_index_buffers: Vec::new(),
+            queued_buffer_builder: Vec::new()
         })))
     }
 
@@ -316,25 +316,77 @@ impl GameRenderer {
         }
     }
 
-    pub fn end(&mut self) -> Result<()> {
-        // Dequeue buffers
-        if self.0.queued_vertex_buffers.len() != self.0.queued_index_buffers.len() {
-            panic!(
-                "Vertex buffer count ({}) is not matching with Index Buffer count {}",
-                self.0.queued_vertex_buffers.len(),
-                self.0.queued_index_buffers.len()
+    pub fn queue_buffer_builder(&mut self) -> Result<()> {
+        // Create groups of equal buffer builders
+        let mut grouped_buffer_builders = Vec::new();
+        for buffer_builder in self.0.queued_buffer_builder.iter() {
+            // Push first buffer into grouped buffer builders list
+            if grouped_buffer_builders.is_empty() {
+                grouped_buffer_builders.push(vec![buffer_builder.clone()]);
+                continue;
+            }
+
+            // Check if current buffer and last buffer moved into grouped buffer builders are equal, if yes add this
+            // buffer into the buffer group.
+            let buffer_builder_groups = grouped_buffer_builders.len();
+            let last_group = grouped_buffer_builders
+                .get_mut(buffer_builder_groups - 1)
+                .unwrap();
+            let last_buffer_builder = last_group.get(last_group.len() - 1).unwrap();
+            if last_buffer_builder.eq(buffer_builder) {
+                last_group.push(buffer_builder.clone());
+                continue;
+            }
+
+            // If not equal, create a new buffer group and add this buffer into the group
+            grouped_buffer_builders.push(vec![buffer_builder.clone()]);
+        }
+
+        // Process groups into buffer and vertex format
+        let app = &self.0.application;
+        let mut grouped_buffers: Vec<(Buffer, Buffer, VertexFormat)> = Vec::new();
+        for buffer_builder_group in grouped_buffer_builders {
+            let (mut vertices, mut indices) = (Vec::new(), Vec::new());
+            let vertex_format = buffer_builder_group.get(0).unwrap().vertex_format.clone();
+
+            // Fill buffer data
+            for buffer_builder in buffer_builder_group.into_iter() {
+                vertices.push(buffer_builder.vertices);
+                indices.push(buffer_builder.indices);
+            }
+
+            // Create buffer
+            let (vertex_buffer, index_buffer) = (
+                Buffer::new(
+                    app.clone(),
+                    vk::BufferUsageFlags::VERTEX_BUFFER,
+                    (vertex_format.vertex_size() * vertices.len()) as vk::DeviceSize,
+                    None,
+                )?,
+                Buffer::new(
+                    app.clone(),
+                    vk::BufferUsageFlags::INDEX_BUFFER,
+                    (mem::size_of::<u16>() * indices.len()) as vk::DeviceSize,
+                    None,
+                )?,
             );
+
+            // Write buffer and push
+            vertex_buffer.write_ptr(vertices.as_ptr(), vertices.len())?;
+            index_buffer.write_ptr(indices.as_ptr(), indices.len())?;
+            grouped_buffers.push((vertex_buffer, index_buffer, vertex_format));
         }
 
-        for i in 0..self.0.queued_vertex_buffers.len() {
-            let vertex_buffer = self.0.queued_vertex_buffers.get(i).unwrap();
-            let index_buffer = self.0.queued_index_buffers.get(i).unwrap();
-
-            self.bind_pipeline(self.find_pipeline("draw").unwrap(), &[]);
-            self.bind_vertex_buffer(vertex_buffer);
-            self.draw_indexed(index_buffer);
+        // Bind and draw
+        for (vertex_buffer, index_buffer, vertex_format) in grouped_buffers {
+            self.bind_pipeline(self.find_pipeline(vertex_format.pipeline_name()).unwrap(), &[]);
+            self.bind_vertex_buffer(&vertex_buffer);
+            self.draw_indexed(&index_buffer);
         }
+        Ok(())
+    }
 
+    pub fn end(&mut self) -> Result<()> {
         // Memory barrier
         let device = &self.0.application.main_device().virtual_device();
         unsafe { device.cmd_end_rendering(self.0.command_buffer) };
@@ -387,11 +439,6 @@ impl GameRenderer {
 
         // Wait for finish operations
         unsafe { device.device_wait_idle() }?;
-
-        // Cleanup queues
-        let mutable_inner = unsafe { Arc::get_mut_unchecked(&mut self.0) };
-        mutable_inner.queued_vertex_buffers.clear();
-        mutable_inner.queued_index_buffers.clear();
         Ok(())
     }
 
@@ -489,60 +536,134 @@ impl GameRenderer {
     }
 }
 
-pub trait Vertex: Clone + Debug + Default {}
-
-#[derive(Clone, Debug, Default)]
-pub struct BufferBuilder<V: Vertex> {
-    vertices: Vec<V>,
-    indices: Vec<u16>,
+/// This enum describes the topology of the project. The topology defines the values for the index buffer
+#[derive(Clone, PartialEq)]
+pub enum VertexFormat {
+    TriangleCoordColor,
+    QuadCoordColor,
+    QuadCoordImage(Image)
 }
 
-impl<V: Vertex> BufferBuilder<V> {
-    pub fn add_triangle(&mut self, vertex0: V, vertex1: V, vertex2: V) -> &mut Self {
-        let count = self.vertices.len() as u16;
-        self.indices
-            .extend_from_slice(&[count, count + 1, count + 2]);
-        self.vertices
-            .extend_from_slice(&[vertex0, vertex1, vertex2]);
+impl VertexFormat {
+    #[inline]
+    pub fn add_indices(&self, indices: &mut Vec<u16>) {
+        match self {
+            VertexFormat::TriangleCoordColor => indices.extend(vec![0, 1, 2]),
+            VertexFormat::QuadCoordColor | VertexFormat::QuadCoordImage(_) => indices.extend(vec![0, 1, 2, 2, 3, 0]),
+        }
+    }
+
+    #[inline]
+    pub const fn vertex_size(&self) -> usize {
+        match self {
+            VertexFormat::TriangleCoordColor | VertexFormat::QuadCoordColor => mem::size_of::<Vec2>() + mem::size_of::<Vec3>(),
+            VertexFormat::QuadCoordImage(_) => mem::size_of::<Vec2>() * 2
+        }
+    }
+
+    #[inline]
+    pub const fn pipeline_name(&self) -> &'static str {
+        match self {
+            VertexFormat::TriangleCoordColor | VertexFormat::QuadCoordColor => "position_color",
+            VertexFormat::QuadCoordImage(_) => "position_texcoord"
+        }
+    }
+}
+
+/// This struct describes the data of a single vertex. The vertex contains the position and the color or uv coordinates.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) struct Vertex {
+    position: Vec2,
+    color: Option<Vec3>,
+    uv: Option<Vec2>,
+}
+
+/// This struct represents the buffer builder. The buffer builder allows the renderer to draw batched render calls when
+/// possible or non-batched when needed.
+#[derive(Clone)]
+pub struct BufferBuilder {
+    vertices: Vec<Vertex>,
+    indices: Vec<u16>,
+    current_vertex: Option<Vertex>,
+    vertex_format: VertexFormat
+}
+
+impl PartialEq for BufferBuilder {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.vertex_format == other.vertex_format
+    }
+}
+
+impl BufferBuilder {
+    #[inline]
+    pub fn builder(vertex_format: VertexFormat) -> Self {
+        Self {
+            vertices: vec![],
+            indices: vec![],
+            current_vertex: None,
+            vertex_format,
+        }
+    }
+
+    pub fn begin(mut self, x: f32, y: f32) -> Self {
+        if let Some(vertex) = self.current_vertex.as_ref() {
+            panic!(
+                "Error while using buffer builder => The previous vertex ({:?}) has not end",
+                vertex
+            );
+        }
+
+        self.current_vertex = Some(Vertex {
+            position: Vec2::new(x, y),
+            color: None,
+            uv: None,
+        });
         self
     }
 
-    pub fn add_quad(&mut self, vertex0: V, vertex1: V, vertex2: V, vertex3: V) -> &mut Self {
-        let count = self.vertices.len() as u16;
-        self.indices.extend_from_slice(&[
-            count,
-            count + 1,
-            count + 3,
-            count + 3,
-            count + 1,
-            count + 2,
-        ]);
-        self.vertices
-            .extend_from_slice(&[vertex0, vertex1, vertex2, vertex3]);
+    pub fn color(mut self, red: f32, green: f32, blue: f32) -> Self {
+        let Some(vertex) = self.current_vertex.as_mut() else {
+            panic!("Error while using buffer builder => No vertex building has begun, use position before this");
+        };
+
+        if vertex.uv.is_some() {
+            panic!("Error while using buffer builder => Unable to set color while uv coordinates are set");
+        }
+
+        vertex.color = Some(Vec3::new(red, green, blue));
         self
     }
 
-    pub fn build(&self, renderer: &mut GameRenderer) -> Result<()> {
-        let app = &renderer.0.application;
-        let vertex_buffer = Buffer::new(
-            app.clone(),
-            vk::BufferUsageFlags::VERTEX_BUFFER,
-            (mem::size_of::<V>() * self.vertices.len()) as vk::DeviceSize,
-            None,
-        )?;
-        vertex_buffer.write_ptr(self.vertices.as_ptr(), self.vertices.len())?;
+    pub fn uv(mut self, u: f32, v: f32) -> Self {
+        let Some(vertex) = self.current_vertex.as_mut() else {
+            panic!("Error while using buffer builder => No vertex building has begun, use position before this");
+        };
 
-        let index_buffer = Buffer::new(
-            app.clone(),
-            vk::BufferUsageFlags::INDEX_BUFFER,
-            (mem::size_of::<u16>() * self.indices.len()) as vk::DeviceSize,
-            None,
-        )?;
-        index_buffer.write_ptr(self.indices.as_ptr(), self.indices.len())?;
+        if vertex.color.is_some() {
+            panic!("Error while using buffer builder => Unable to set color while color is set");
+        }
 
-        let mutable_inner = unsafe { Arc::get_mut_unchecked(&mut renderer.0) };
-        mutable_inner.queued_vertex_buffers.push(vertex_buffer);
-        mutable_inner.queued_index_buffers.push(index_buffer);
-        Ok(())
+        vertex.uv = Some(Vec2::new(u, v));
+        self
+    }
+
+    pub fn end(mut self) -> Self {
+        let Some(vertex) = self.current_vertex else {
+            panic!("Error while using buffer builder => No vertex is in building");
+        };
+
+        self.vertices.push(vertex);
+        self.current_vertex = None;
+        self
+    }
+
+    #[inline]
+    pub fn build(mut self, renderer: &mut GameRenderer) {
+        self.vertex_format.add_indices(&mut self.indices);
+        unsafe { Arc::get_mut_unchecked(&mut renderer.0) }
+            .queued_buffer_builder
+            .push(self);
     }
 }

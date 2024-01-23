@@ -312,8 +312,8 @@ impl WriteDescriptorSet for Image {
     fn write_to_set(&self, descriptor_set: &DescriptorSet, binding: u32) {
         let descriptor_image_info = vk::DescriptorImageInfo::default()
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image_view(self.image_view)
-            .sampler(self.sampler);
+            .image_view(self.0.image_view)
+            .sampler(self.0.sampler);
         let write_descriptor_set = vk::WriteDescriptorSet::default()
             .dst_set(descriptor_set.vk_descriptor_set)
             .dst_binding(binding)

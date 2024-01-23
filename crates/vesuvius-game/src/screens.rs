@@ -1,123 +1,27 @@
-use crate::{DVertex, Vertex};
-use ash::vk;
-use glam::{Vec2, Vec3};
-use std::mem::size_of;
-use vesuvius_engine::render::buffer::Buffer;
-use vesuvius_engine::render::image::Image;
-use vesuvius_engine::render::pipeline::{DescriptorSet, WriteDescriptorSet};
-use vesuvius_engine::render::{BufferBuilder, GameRenderer};
+use vesuvius_engine::render::{BufferBuilder, GameRenderer, VertexFormat};
 use vesuvius_engine::screen::Screen;
 use vesuvius_engine::App;
 
-#[allow(dead_code)] // TODO
-pub struct MainMenuScreen {
-    pub(crate) vertex_buffer: Option<Buffer>,
-    pub(crate) index_buffer: Option<Buffer>,
-    pub(crate) image: Option<Image>,
-    pub(crate) renderer: GameRenderer,
-    pub(crate) descriptor_set: Option<DescriptorSet>,
-}
+pub struct MainMenuScreen;
 
 impl Screen for MainMenuScreen {
-    fn init(&mut self, application: &App) {
-        let vertex_buffer = Buffer::new(
-            application.clone(),
-            vk::BufferUsageFlags::VERTEX_BUFFER,
-            (size_of::<Vertex>() * 4) as vk::DeviceSize,
-            None,
-        )
-        .unwrap();
-        vertex_buffer
-            .write([
-                Vertex {
-                    position: Vec2::new(-0.5, -0.5),
-                    uv: Vec2::new(0.0, 0.0),
-                },
-                Vertex {
-                    position: Vec2::new(0.5, -0.5),
-                    uv: Vec2::new(1.0, 0.0),
-                },
-                Vertex {
-                    position: Vec2::new(0.5, 0.5),
-                    uv: Vec2::new(1.0, 1.0),
-                },
-                Vertex {
-                    position: Vec2::new(-0.5, 0.5),
-                    uv: Vec2::new(0.0, 1.0),
-                },
-            ])
-            .unwrap();
-
-        let index_buffer = Buffer::new(
-            application.clone(),
-            vk::BufferUsageFlags::INDEX_BUFFER,
-            (size_of::<u16>() * 6) as vk::DeviceSize,
-            None,
-        )
-        .unwrap();
-        index_buffer
-            .write([0u16, 1u16, 2u16, 2u16, 3u16, 0u16])
-            .unwrap();
-
-        self.image =
-            Some(Image::from_file(application, "assets/resources/images/image.png").unwrap());
-        let descriptor_set = DescriptorSet::allocate(&self.renderer, "image", 0).unwrap();
-        self.image
-            .as_ref()
-            .unwrap()
-            .write_to_set(&descriptor_set, 0);
-        self.descriptor_set = Some(descriptor_set);
-
-        self.vertex_buffer = Some(vertex_buffer);
-        self.index_buffer = Some(index_buffer);
-    }
+    fn init(&mut self, _application: &App) {}
 
     fn render(&self, renderer: &mut GameRenderer) {
-        //renderer.bind_pipeline(
-        //    renderer.find_pipeline("image").unwrap(),
-        //    slice::from_ref(self.descriptor_set.as_ref().unwrap()),
-        //);
-        //renderer.bind_vertex_buffer(self.vertex_buffer.as_ref().unwrap());
-
-        BufferBuilder::default()
-            .add_quad(
-                DVertex {
-                    position: Vec2::new(-0.25, -0.25), // Left-Top
-                    color: Vec3::new(1.0, 1.0, 1.0)
-                },
-                DVertex {
-                    position: Vec2::new(-0.5, -0.25), // Right-Top
-                    color: Vec3::new(1.0, 1.0, 1.0)
-                },
-                DVertex {
-                    position: Vec2::new(-0.5, -0.5), // Right-Bottom
-                    color: Vec3::new(1.0, 1.0, 1.0)
-                },
-                DVertex {
-                    position: Vec2::new(-0.25, -0.5), // Left-Bottom
-                    color: Vec3::new(1.0, 1.0, 1.0)
-                },
-            )
-            .add_quad(
-                DVertex {
-                    position: Vec2::new(0.75, 0.75), // Left-Top
-                    color: Vec3::new(1.0, 1.0, 1.0)
-                },
-                DVertex {
-                    position: Vec2::new(1.0, 0.75), // Right-Top
-                    color: Vec3::new(1.0, 1.0, 1.0)
-                },
-                DVertex {
-                    position: Vec2::new(1.0, 1.0), // Right-Bottom
-                    color: Vec3::new(1.0, 1.0, 1.0)
-                },
-                DVertex {
-                    position: Vec2::new(0.75, 1.0), // Left-Bottom
-                    color: Vec3::new(1.0, 1.0, 1.0)
-                },
-            )
-            .build(renderer)
-            .unwrap();
-        //renderer.draw_indexed(self.index_buffer.as_ref().unwrap());
+        BufferBuilder::builder(VertexFormat::QuadCoordColor)
+            .begin(0.0, 0.0)
+            .color(1.0, 1.0, 1.0)
+            .end()
+            .begin(0.25, 0.0)
+            .color(1.0, 1.0, 1.0)
+            .end()
+            .begin(0.25, 0.25)
+            .color(1.0, 1.0, 1.0)
+            .end()
+            .begin(0.0, 0.25)
+            .color(1.0, 1.0, 1.0)
+            .end()
+            .build(renderer);
+        renderer.queue_buffer_builder().unwrap();
     }
 }

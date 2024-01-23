@@ -320,11 +320,7 @@ impl GameRenderer {
     }
 
     pub fn queue_buffer_builder(&mut self) -> Result<()> {
-        #[repr(C)]
-        #[derive(Debug)]
-        struct TestVertex {
-            position: Vec2, color: Vec3
-        }
+        // TODO: Implement DescriptorSet usage for images etc.
 
         // Create groups of equal buffer builders
         let mut grouped_buffer_builders = Vec::new();

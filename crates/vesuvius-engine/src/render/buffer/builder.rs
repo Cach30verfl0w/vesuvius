@@ -2,6 +2,7 @@ use std::sync::Arc;
 use glam::{Vec2, Vec3};
 use crate::render::buffer::format::{Topology, VertexFormat};
 use crate::render::GameRenderer;
+use crate::render::image::Image;
 
 /// This struct describes the data of a single vertex. The vertex contains the position and the color or uv coordinates.
 #[repr(C)]
@@ -14,18 +15,19 @@ pub(crate) struct Vertex {
 
 /// This struct represents the buffer builder. The buffer builder allows the renderer to draw batched render calls when
 /// possible or non-batched when needed.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct BufferBuilder {
     pub(crate) vertices: Vec<Vertex>,
     pub(crate) vertex_format: VertexFormat,
     pub(crate) topology: Topology,
-    current_vertex: Option<Vertex>
+    current_vertex: Option<Vertex>,
+    pub(crate) image: Option<Image>
 }
 
 impl PartialEq for BufferBuilder {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.vertex_format == other.vertex_format && self.topology == other.topology
+        self.vertex_format == other.vertex_format && self.topology == other.topology && self.image == other.image
     }
 }
 
@@ -36,8 +38,14 @@ impl BufferBuilder {
             vertices: vec![],
             current_vertex: None,
             vertex_format,
-            topology
+            topology,
+            image: None
         }
+    }
+
+    pub fn image(mut self, image: &Image) -> Self {
+        self.image = Some(image.clone());
+        self
     }
 
     pub fn begin(mut self, x: f32, y: f32) -> Self {
@@ -94,6 +102,10 @@ impl BufferBuilder {
 
     #[inline]
     pub fn build(self, renderer: &mut GameRenderer) {
+        if self.image.is_some() && self.vertex_format != VertexFormat::PositionTexCoord {
+            panic!("Error while using buffer builder => Invalid vertex format for image");
+        }
+
         unsafe { Arc::get_mut_unchecked(&mut renderer.0) }
             .queued_buffer_builder
             .push(self);

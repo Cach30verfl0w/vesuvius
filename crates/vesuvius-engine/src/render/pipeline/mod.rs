@@ -102,7 +102,7 @@ impl RenderPipeline {
         let rasterization_stage_create_info = vk::PipelineRasterizationStateCreateInfo::default()
             .rasterizer_discard_enable(false)
             .depth_clamp_enable(false)
-            .polygon_mode(vk::PolygonMode::FILL) // TODO: Read from config
+            .polygon_mode(vk::PolygonMode::FILL)
             .cull_mode(vk::CullModeFlags::NONE)
             .front_face(vk::FrontFace::CLOCKWISE)
             .depth_bias_enable(false)

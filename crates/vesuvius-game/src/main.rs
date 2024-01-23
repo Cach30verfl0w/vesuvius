@@ -34,7 +34,9 @@ fn main() {
     let mut renderer = GameRenderer::new(app.clone()).unwrap();
     renderer.reload(true).unwrap();
 
-    app.open_screen(Box::new(MainMenuScreen));
+    app.open_screen(Box::new(MainMenuScreen {
+        image: None
+    }));
     log::info!("Successfully created application and renderer");
 
     #[cfg(feature = "debug_extensions")]

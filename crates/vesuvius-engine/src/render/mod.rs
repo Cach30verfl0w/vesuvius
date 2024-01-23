@@ -10,12 +10,12 @@ use ash::vk;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use std::sync::Arc;
 use std::{fs, mem, slice};
-use glam::{Vec2, Vec3};
 
-use crate::render::pipeline::{DescriptorSet, RenderPipeline};
+use crate::render::pipeline::{DescriptorSet, RenderPipeline, WriteDescriptorSet};
 use crate::App;
 use crate::render::buffer::builder::BufferBuilder;
 use crate::render::buffer::format::VertexFormat;
+use crate::render::image::Image;
 use crate::Result;
 
 struct GameRendererInner {
@@ -349,12 +349,12 @@ impl GameRenderer {
 
         // Process groups into buffer and vertex format
         let app = &self.0.application;
-        let mut grouped_buffers: Vec<(Buffer, Buffer, VertexFormat)> = Vec::new();
+        let mut grouped_buffers: Vec<(Buffer, Buffer, VertexFormat, Option<Image>)> = Vec::new();
         for buffer_builder_group in grouped_buffer_builders {
             let (mut vertices, mut indices) = (Vec::new(), Vec::new());
-            let (vertex_format, topology) = {
+            let (vertex_format, topology, image) = {
                 let buffer_builder = buffer_builder_group.get(0).unwrap();
-                (buffer_builder.vertex_format, buffer_builder.topology)
+                (buffer_builder.vertex_format, buffer_builder.topology, buffer_builder.image.clone())
             };
 
             // Fill buffer data
@@ -386,12 +386,19 @@ impl GameRenderer {
             // Write buffer and push
             vertex_buffer.write_ptr(vertices.as_ptr(), vertices.len())?;
             index_buffer.write_ptr(indices.as_ptr(), indices.len())?;
-            grouped_buffers.push((vertex_buffer, index_buffer, vertex_format));
+            grouped_buffers.push((vertex_buffer, index_buffer, vertex_format, image));
         }
 
         // Bind and draw
-        for (vertex_buffer, index_buffer, vertex_format) in grouped_buffers {
-            self.bind_pipeline(self.find_pipeline(vertex_format.pipeline_name()).unwrap(), &[]);
+        for (vertex_buffer, index_buffer, vertex_format, image) in grouped_buffers {
+            if let Some(image) = image {
+                let descriptor_set = DescriptorSet::allocate(&self, vertex_format.pipeline_name(), 0).unwrap();
+                image.write_to_set(&descriptor_set, 0);
+                self.bind_pipeline(self.find_pipeline(vertex_format.pipeline_name()).unwrap(), slice::from_ref(&descriptor_set));
+            } else {
+                self.bind_pipeline(self.find_pipeline(vertex_format.pipeline_name()).unwrap(), &[]);
+            }
+
             self.bind_vertex_buffer(&vertex_buffer);
             self.draw_indexed(&index_buffer);
 

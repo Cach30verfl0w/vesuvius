@@ -5,6 +5,9 @@ use ash::vk;
 use std::mem;
 use vk_mem_alloc::{Allocation, AllocationCreateFlags, AllocationCreateInfo, AllocationInfo};
 
+pub mod format;
+pub mod builder;
+
 /// This structure represents an allocated buffer with device memory. This struct contains a device, the buffer handle
 /// itself, the allocation handle and the info about the allocation and allows a simple write function to write
 /// arbitrary data into the buffer's memory.

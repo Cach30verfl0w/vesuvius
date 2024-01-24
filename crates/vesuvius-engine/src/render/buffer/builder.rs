@@ -1,8 +1,8 @@
-use std::sync::Arc;
-use glam::{Vec2, Vec3};
 use crate::render::buffer::format::{Topology, VertexFormat};
-use crate::render::GameRenderer;
 use crate::render::image::Image;
+use crate::render::GameRenderer;
+use glam::{Vec2, Vec3};
+use std::sync::Arc;
 
 /// This struct describes the data of a single vertex. The vertex contains the position and the color or uv coordinates.
 #[repr(C)]
@@ -21,34 +21,39 @@ pub struct BufferBuilder {
     pub(crate) vertex_format: VertexFormat,
     pub(crate) topology: Topology,
     current_vertex: Option<Vertex>,
-    pub(crate) image: Option<Image>
+    pub(crate) image: Option<Image>,
+    pub(crate) pipeline: String,
 }
 
 impl PartialEq for BufferBuilder {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.vertex_format == other.vertex_format && self.topology == other.topology && self.image == other.image
+        self.vertex_format == other.vertex_format
+            && self.topology == other.topology
+            && self.image == other.image
+            && self.pipeline == other.pipeline
     }
 }
 
 impl BufferBuilder {
     #[inline]
-    pub fn builder(vertex_format: VertexFormat, topology: Topology) -> Self {
+    pub fn builder(vertex_format: VertexFormat, topology: Topology, pipeline: &str) -> Self {
         Self {
             vertices: vec![],
             current_vertex: None,
             vertex_format,
             topology,
-            image: None
+            image: None,
+            pipeline: pipeline.to_string(),
         }
     }
 
-    pub fn image(mut self, image: &Image) -> Self {
+    pub fn image(&mut self, image: &Image) -> &mut Self {
         self.image = Some(image.clone());
         self
     }
 
-    pub fn begin(mut self, x: f32, y: f32) -> Self {
+    pub fn begin(&mut self, x: f32, y: f32) -> &mut Self {
         if let Some(vertex) = self.current_vertex.as_ref() {
             panic!(
                 "Error while using buffer builder => The previous vertex ({:?}) has not end",
@@ -64,48 +69,35 @@ impl BufferBuilder {
         self
     }
 
-    pub fn color(mut self, red: f32, green: f32, blue: f32) -> Self {
+    pub fn color(&mut self, red: f32, green: f32, blue: f32) -> &mut Self {
         let Some(vertex) = self.current_vertex.as_mut() else {
             panic!("Error while using buffer builder => No vertex building has begun, use position before this");
         };
-
-        if vertex.uv.is_some() {
-            panic!("Error while using buffer builder => Unable to set color while uv coordinates are set");
-        }
 
         vertex.color = Some(Vec3::new(red, green, blue));
         self
     }
 
-    pub fn uv(mut self, u: f32, v: f32) -> Self {
+    pub fn uv(&mut self, u: f32, v: f32) -> &mut Self {
         let Some(vertex) = self.current_vertex.as_mut() else {
             panic!("Error while using buffer builder => No vertex building has begun, use position before this");
         };
-
-        if vertex.color.is_some() {
-            panic!("Error while using buffer builder => Unable to set color while color is set");
-        }
 
         vertex.uv = Some(Vec2::new(u, v));
         self
     }
 
-    pub fn end(mut self) -> Self {
+    pub fn end(&mut self) {
         let Some(vertex) = self.current_vertex else {
             panic!("Error while using buffer builder => No vertex is in building");
         };
 
         self.vertices.push(vertex);
         self.current_vertex = None;
-        self
     }
 
     #[inline]
     pub fn build(self, renderer: &mut GameRenderer) {
-        if self.image.is_some() && self.vertex_format != VertexFormat::PositionTexCoord {
-            panic!("Error while using buffer builder => Invalid vertex format for image");
-        }
-
         unsafe { Arc::get_mut_unchecked(&mut renderer.0) }
             .queued_buffer_builder
             .push(self);

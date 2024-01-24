@@ -3,6 +3,7 @@ pub mod screens;
 use screens::MainMenuScreen;
 #[cfg(feature = "debug_extensions")]
 use vesuvius_engine::debug::DebugExtension;
+use vesuvius_engine::render::text::FontRenderer;
 use vesuvius_engine::render::GameRenderer;
 use vesuvius_engine::vesuvius_winit::dpi::PhysicalSize;
 use vesuvius_engine::vesuvius_winit::event::{ElementState, Event, ModifiersState, WindowEvent};
@@ -34,8 +35,12 @@ fn main() {
     let mut renderer = GameRenderer::new(app.clone()).unwrap();
     renderer.reload(true).unwrap();
 
+    let font_renderer =
+        FontRenderer::new(renderer.clone(), "assets/resources/fonts/roboto-thin").unwrap();
+
     app.open_screen(Box::new(MainMenuScreen {
-        image: None
+        image: None,
+        font_renderer,
     }));
     log::info!("Successfully created application and renderer");
 

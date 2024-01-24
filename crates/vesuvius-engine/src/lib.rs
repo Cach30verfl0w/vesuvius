@@ -1,3 +1,4 @@
+#![feature(stmt_expr_attributes)]
 #![feature(get_mut_unchecked)]
 
 extern crate core;

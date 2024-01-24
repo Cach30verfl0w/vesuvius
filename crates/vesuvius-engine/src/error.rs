@@ -25,4 +25,7 @@ pub enum Error {
 
     #[error("Error while decoding image resource => {0}")]
     Image(#[from] image::ImageError),
+
+    #[error("Error while reading from Json => {0}")]
+    Json(#[from] serde_json::Error),
 }

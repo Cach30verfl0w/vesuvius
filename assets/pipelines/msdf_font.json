@@ -1,0 +1,13 @@
+{
+  "name": "msdf_font",
+  "shader": [
+    {
+      "kind": "vertex",
+      "resource": "assets/shader/position_tex_color.vertex.glsl"
+    },
+    {
+      "kind": "fragment",
+      "resource": "assets/shader/msdf_font.fragment.glsl"
+    }
+  ]
+}

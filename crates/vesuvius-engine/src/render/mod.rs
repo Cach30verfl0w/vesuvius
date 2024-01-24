@@ -3,7 +3,6 @@ pub mod image;
 pub mod pipeline;
 pub mod text;
 
-
 use crate::render::buffer::Buffer;
 use crate::render::pipeline::config::PipelineConfiguration;
 use ash::extensions::khr::{Surface, Swapchain};
@@ -11,12 +10,11 @@ use ash::vk;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use std::sync::Arc;
 use std::{fs, mem, slice};
+use glam::vec2;
 
+use crate::render::buffer::builder::BufferBuilder;
 use crate::render::pipeline::{DescriptorSet, RenderPipeline, WriteDescriptorSet};
 use crate::App;
-use crate::render::buffer::builder::BufferBuilder;
-use crate::render::buffer::format::VertexFormat;
-use crate::render::image::Image;
 use crate::Result;
 
 struct GameRendererInner {
@@ -47,7 +45,7 @@ struct GameRendererInner {
     pipelines: Vec<RenderPipeline>,
     descriptor_pool: vk::DescriptorPool,
     queued_buffer_builder: Vec<BufferBuilder>,
-    buffer_cache: Vec<Buffer>
+    buffer_cache: Vec<Buffer>,
 }
 
 impl Drop for GameRendererInner {
@@ -142,12 +140,12 @@ impl GameRenderer {
             pipelines: Vec::new(),
             descriptor_pool,
             queued_buffer_builder: Vec::new(),
-            buffer_cache: Vec::new()
+            buffer_cache: Vec::new(),
         })))
     }
 
     pub fn reload(&mut self, recompile_pipelines: bool) -> Result<()> {
-        let inner = Arc::get_mut(&mut self.0).unwrap();
+        let inner = unsafe { Arc::get_mut_unchecked(&mut self.0) };
 
         // Create swapchain and images
         let device = inner.application.main_device().virtual_device();
@@ -250,7 +248,7 @@ impl GameRenderer {
     }
 
     pub fn begin(&mut self) -> Result<()> {
-        let inner = Arc::get_mut(&mut self.0).unwrap();
+        let inner = unsafe { Arc::get_mut_unchecked(&mut self.0) };
         inner.current_image_index = unsafe {
             inner.swapchain_loader.acquire_next_image(
                 inner.swapchain.unwrap(),
@@ -321,8 +319,6 @@ impl GameRenderer {
     }
 
     pub fn queue_buffer_builder(&mut self) -> Result<()> {
-        // TODO: Implement DescriptorSet usage for images etc.
-
         // Create groups of equal buffer builders
         let mut grouped_buffer_builders = Vec::new();
         for buffer_builder in self.0.queued_buffer_builder.iter() {
@@ -350,19 +346,31 @@ impl GameRenderer {
 
         // Process groups into buffer and vertex format
         let app = &self.0.application;
-        let mut grouped_buffers: Vec<(Buffer, Buffer, VertexFormat, Option<Image>)> = Vec::new();
+        let mut grouped_buffers = Vec::new();
         for buffer_builder_group in grouped_buffer_builders {
             let (mut vertices, mut indices) = (Vec::new(), Vec::new());
-            let (vertex_format, topology, image) = {
+            let (vertex_format, topology, image, pipeline) = {
                 let buffer_builder = buffer_builder_group.get(0).unwrap();
-                (buffer_builder.vertex_format, buffer_builder.topology, buffer_builder.image.clone())
+                (
+                    buffer_builder.vertex_format,
+                    buffer_builder.topology,
+                    buffer_builder.image.clone(),
+                    buffer_builder.pipeline.clone(),
+                )
             };
 
             // Fill buffer data
             let mut vertex_count = 0;
+            let window_size = self.0.application.window().inner_size();
+            let window_size = vec2(window_size.width as f32, window_size.height as f32);
+
             for buffer_builder in buffer_builder_group {
-                indices.extend(topology.indices(vertex_count as u16));
-                for vertex in buffer_builder.vertices {
+                for i in 0..=(buffer_builder.vertices.len() / buffer_builder.topology.vertex_count()) {
+                    indices.extend(topology.indices((i * buffer_builder.topology.vertex_count()) as u16));
+                }
+
+                for mut vertex in buffer_builder.vertices.clone() {
+                    vertex.position = ((vertex.position * 2.0) - window_size) / window_size;
                     vertex_format.extend_raw_data(&mut vertices, vertex);
                     vertex_count += 1;
                 }
@@ -387,29 +395,34 @@ impl GameRenderer {
             // Write buffer and push
             vertex_buffer.write_ptr(vertices.as_ptr(), vertices.len())?;
             index_buffer.write_ptr(indices.as_ptr(), indices.len())?;
-            grouped_buffers.push((vertex_buffer, index_buffer, vertex_format, image));
+            grouped_buffers.push((vertex_buffer, index_buffer, image, pipeline));
         }
 
         // Bind and draw
-        for (vertex_buffer, index_buffer, vertex_format, image) in grouped_buffers {
+        for (vertex_buffer, index_buffer, image, pipeline) in grouped_buffers {
             if let Some(image) = image {
-                let descriptor_set = DescriptorSet::allocate(&self, vertex_format.pipeline_name(), 0).unwrap();
+                let descriptor_set = DescriptorSet::allocate(&self, &pipeline, 0).unwrap();
                 image.write_to_set(&descriptor_set, 0);
-                self.bind_pipeline(self.find_pipeline(vertex_format.pipeline_name()).unwrap(), slice::from_ref(&descriptor_set));
+                self.bind_pipeline(
+                    self.find_pipeline(&pipeline).unwrap(),
+                    slice::from_ref(&descriptor_set),
+                );
             } else {
-                self.bind_pipeline(self.find_pipeline(vertex_format.pipeline_name()).unwrap(), &[]);
+                self.bind_pipeline(self.find_pipeline(&pipeline).unwrap(), &[]);
             }
 
             self.bind_vertex_buffer(&vertex_buffer);
             self.draw_indexed(&index_buffer);
 
-            let buffer_cache = &mut Arc::get_mut(&mut self.0).unwrap().buffer_cache;
+            let buffer_cache = &mut unsafe { Arc::get_mut_unchecked(&mut self.0) }.buffer_cache;
             buffer_cache.push(vertex_buffer);
             buffer_cache.push(index_buffer);
         }
 
         // Dequeue already used buffer builder
-        Arc::get_mut(&mut self.0).unwrap().queued_buffer_builder.clear();
+        unsafe { Arc::get_mut_unchecked(&mut self.0) }
+            .queued_buffer_builder
+            .clear();
         Ok(())
     }
 
@@ -468,7 +481,9 @@ impl GameRenderer {
         unsafe { device.device_wait_idle() }?;
 
         // Clear buffer cache
-        Arc::get_mut(&mut self.0).unwrap().buffer_cache.clear();
+        unsafe { Arc::get_mut_unchecked(&mut self.0) }
+            .buffer_cache
+            .clear();
         Ok(())
     }
 

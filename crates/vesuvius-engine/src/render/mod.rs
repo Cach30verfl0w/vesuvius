@@ -1,6 +1,7 @@
 pub mod buffer;
 pub mod image;
 pub mod pipeline;
+pub mod text;
 
 
 use crate::render::buffer::Buffer;

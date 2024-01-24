@@ -7,4 +7,3 @@ This game contains the following scenarios:
 
 ## Engine and technical detail
 The full game is written without any external game engine or other high-level Vulkan abstractions. As Vulkan wrapper for Rust, I used [ash-rs](https://github.com/ash-rs/ash). The game's code is not the best, because I was never really working with Vulkan before. I have to thank [BeastLe9enD](https://github.com/BeastLe9enD) for the idea to write a game in Vulkan and for some of his knowledge in Graphics Programming.
-

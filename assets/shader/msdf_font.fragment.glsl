@@ -1,6 +1,7 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
+// TODO: Make shader with back color compatible + make pxRange dynamic
 layout(set = 0, binding = 0) uniform sampler2D msdfSampler;
 
 layout(location = 0) in vec4 inColor;
@@ -20,12 +21,9 @@ float median(float r, float g, float b) {
 }
 
 void main() {
-    // Temporary
-    vec4 bgColor = vec4(0.0, 0.0, 0.0, 1.0);
-
     // Shader
     vec3 msd = texture(msdfSampler, texCoord).rgb;
     float screenPxDistance = screenPxRange() * (median(msd.r, msd.g, msd.b) - 0.5);
     float opacity = clamp(screenPxDistance + 0.5, 0.0, 1.0);
-    outColor = mix(bgColor, inColor, opacity);
+    outColor = inColor * vec4(1.0, 1.0, 1.0, opacity);
 }
